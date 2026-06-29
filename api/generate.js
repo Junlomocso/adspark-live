@@ -27,11 +27,41 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ error: 'Invalid request body' }); }
 
-  const { business, detail, angle, format, duration, item } = body || {};
+  const { business, detail, angle, format, duration, item, channel } = body || {};
   if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
 
   const isVideo = format === 'video';
-  const platform = isVideo ? 'Google Flow (Veo)' : 'ChatGPT (GPT Image)';
+  const genPlatform = isVideo ? 'Google Flow (Veo)' : 'ChatGPT (GPT Image)';
+
+  // Where the finished ad will be published. This shapes tone, pacing, and aspect ratio.
+  const CHANNELS = {
+    tiktok: {
+      name: 'TikTok',
+      ratio: '9:16 vertical',
+      tone: 'Raw, native, and authentic — like a real person filmed it, NOT a polished ad. Hook MUST land in the first 1 second or viewers swipe away. Conversational, fast, trend-aware. Avoid corporate language entirely. Sound and a strong spoken or on-screen hook drive everything.',
+      copyNote: 'Write the primary text like a TikTok caption: short, punchy, lowercase-friendly, a curiosity hook up front, casual. It should feel native to the feed, not like an ad.'
+    },
+    fb_reels: {
+      name: 'Facebook Reels',
+      ratio: '9:16 vertical',
+      tone: 'Short-form vertical, slightly more produced than TikTok and skewing to a broader/older audience. Still hook fast, but a clear value message and a confident, friendly tone work well. Mild polish is fine.',
+      copyNote: 'Write the primary text as a punchy Reels caption — clear hook, a line of value, and a nudge to act. A little more explicit about the offer than TikTok.'
+    },
+    ig_reels: {
+      name: 'Instagram Reels',
+      ratio: '9:16 vertical',
+      tone: 'Polished, aesthetic, visually-driven short-form. Audience expects clean, attractive visuals and aspirational tone. Hook fast but lean on visual appeal and lifestyle framing.',
+      copyNote: 'Write the primary text as a clean, aspirational Reels caption — visually evocative, benefit-led, with tasteful energy. Light, well-chosen emoji acceptable if it fits the brand.'
+    },
+    feed: {
+      name: 'Facebook / Instagram Feed',
+      ratio: isVideo ? '4:5 or 1:1' : '1:1 square or 4:5 portrait',
+      tone: 'Direct-response feed ad. A more explicit sales tone is acceptable. Clear value proposition, social proof or offer, and an unambiguous call to action. Can be more produced and salesy than short-form.',
+      copyNote: 'Write the primary text as a classic high-converting feed ad: hook, build the angle, present the offer/proof, and drive to the CTA. 2-3 short paragraphs.'
+    }
+  };
+  const ch = CHANNELS[channel] || CHANNELS.feed;
+
   const itemLine = item
     ? `The user will attach a reference: "${item}". The visual prompt must treat it as the real hero subject and not invent a different product.`
     : `No reference will be attached; the visual prompt should describe a photoreal, on-brand scene to generate from scratch.`;
@@ -43,17 +73,18 @@ export default async function handler(req, res) {
 
   const durationGuide = isVideo
     ? (isMultiSeg
-        ? `This is a ${duration}-second vertical (9:16) video for a paid-social ad.
-IMPORTANT: Google Flow (Veo) generates a MAXIMUM of 8 seconds per clip. To reach ${duration}s, the user will generate ${segCount} separate 8-second clips and chain them together using Flow's "Extend" feature.
-So the video prompt MUST be broken into exactly ${segCount} numbered segments (CLIP 1, CLIP 2, ...), each describing roughly 8 seconds of footage. Each clip must be self-contained enough to generate on its own, but they must connect visually so the chained result feels like one continuous ad. Carry the same subject, lighting, and style across all clips so they match when stitched.`
-        : `This is an 8-second vertical (9:16) video — a single Google Flow (Veo) generation, no chaining needed. 8s is Veo's native clip length, the cleanest single take.`)
-    : `This is a single still image, square 1:1 for feed, with clear negative space reserved for a headline overlay.`;
+        ? `This is a ${duration}-second ${ch.ratio} video ad for ${ch.name}.
+IMPORTANT: Google Flow (Veo) generates a MAXIMUM of 8 seconds per clip. To reach ${duration}s, the user generates ${segCount} separate 8-second clips and chains them with Flow's "Extend" feature.
+Break the video into exactly ${segCount} self-contained 8-second clips that connect visually. Carry the same subject, lighting, and style across all clips so they match when stitched.`
+        : `This is an 8-second ${ch.ratio} video ad for ${ch.name} — a single Google Flow (Veo) generation, no chaining needed.`)
+    : `This is a single still image for ${ch.name}, ${ch.ratio}, with clear negative space reserved for a headline overlay.`;
 
   // System prompt forces freshness and variety on every call.
-  const system = `You are a senior direct-response creative director writing high-converting paid-social ads.
+  const system = `You are a senior direct-response creative director writing high-converting social ads for specific platforms.
 You write fresh, original copy every single time — never reuse phrasings, never fall back on clichés like "Look no further" or "Say goodbye to".
 Match the specific ANGLE you are given: an urgency angle must feel time-pressured; a trust angle must feel credible and reassuring; a proof angle must lean on visible results. Adapt all language to the actual business — never assume roofing unless told.
-Write like a real human marketer: specific, vivid, a little surprising. Vary sentence rhythm. No emoji unless it genuinely fits the brand.
+CRITICAL: tailor tone, pacing, and style to the TARGET CHANNEL. A TikTok ad and a Facebook feed ad are completely different animals — do not write the same copy for both.
+Write like a real human marketer: specific, vivid, a little surprising. Vary sentence rhythm.
 Return ONLY valid JSON, no markdown fences, no preamble.`;
 
   const user = `Generate a complete ad package.
@@ -61,22 +92,32 @@ Return ONLY valid JSON, no markdown fences, no preamble.`;
 BUSINESS: ${business}
 ${detail ? `OFFER / CONTEXT: ${detail}` : ''}
 ANGLE: ${angle}
-TARGET PLATFORM FOR THE VISUAL: ${platform}
+TARGET CHANNEL: ${ch.name}
+CHANNEL TONE & STYLE: ${ch.tone}
+COPY GUIDANCE FOR THIS CHANNEL: ${ch.copyNote}
+TOOL THAT WILL GENERATE THE VISUAL: ${genPlatform}
 ${durationGuide}
 ${itemLine}
 
 Return JSON with exactly these keys:
 {
-  "headline": "scroll-stopping primary headline, under 12 words",
+  "headline": "scroll-stopping primary headline tuned for ${ch.name}, under 12 words",
   "headlineAlt": "a distinctly different alternate headline",
-  "primaryText": "2-3 short paragraphs of post body copy that hooks, builds the angle, and leads to action. Use line breaks between paragraphs.",
+  "primaryText": "post body copy tuned specifically for ${ch.name}. ${ch.copyNote}",
   "cta": "a 2-4 word call-to-action button label",
-  "visualPrompt": "a detailed, copy-paste-ready prompt for ${platform} to generate the ${isVideo ? 'video' : 'image'}. ${isVideo
-      ? (isMultiSeg
-          ? `Structure it as exactly ${segCount} clearly labeled segments — 'CLIP 1 (0-8s)', 'CLIP 2 (8-16s)', and so on — each ~8 seconds, since Flow generates 8s at a time and the user will chain them with Extend. For each clip give the action, camera motion, lighting, and audio. Keep subject, palette, and style consistent across clips so they match when stitched. Open CLIP 1 with the hook and close the final clip with space for a CTA overlay. Add a one-line note at the top reminding the user to generate each clip in order and use Extend to join them.`
-          : `Write it as a single 8-second clip with a beat-by-beat structure (timecodes within the 8s), camera motion, lighting, pacing, and audio direction.`)
-      : 'Include shot type, composition, lighting, mood, aspect ratio, and reserve space for a headline overlay.'} End by instructing the model NOT to bake text into the creative."
+  ${isVideo
+    ? `"clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ]`
+    : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform}. Include shot type, composition, lighting, mood, aspect ratio (${ch.ratio}), and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
 }
+
+${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
+- Return exactly ${segCount} clip${segCount>1?'s':''}.
+- Each array item is the COMPLETE, copy-paste-ready prompt for ONE 8-second Google Flow generation — and NOTHING else.
+- Do NOT include labels like "CLIP 1", timecodes, the word "Extend", or any meta-instructions inside the clip text. The user pastes each item directly into Flow exactly as written.
+- Each clip describes only its own ~8 seconds: the action, camera motion, lighting, and audio for that beat.
+- Keep subject, palette, lighting, and style consistent across all clips so they stitch seamlessly.
+- Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
+- Match the pacing/energy to ${ch.name}.` : ''}
 
 Make this generation genuinely unique — imagine you've never written about this business before.`;
 
@@ -109,6 +150,25 @@ Make this generation genuinely unique — imagine you've never written about thi
     let parsed;
     try { parsed = JSON.parse(clean); }
     catch { return res.status(502).json({ error: 'Could not parse AI response', raw: clean.slice(0, 400) }); }
+
+    // Normalize output so the frontend always gets a predictable shape.
+    if (isVideo) {
+      let clips = parsed.clips;
+      if (!Array.isArray(clips)) {
+        // Fallbacks if the model returned a string instead of an array.
+        if (typeof parsed.visualPrompt === 'string') clips = [parsed.visualPrompt];
+        else if (typeof clips === 'string') clips = [clips];
+        else clips = [];
+      }
+      // Strip any stray "CLIP n" labels or leading timecodes the model may have added.
+      clips = clips.map(c => String(c)
+        .replace(/^\s*clip\s*\d+\s*[:\-–(]?[^\n]*?\)?\s*/i, '')
+        .replace(/^\s*\(?\d+\s*[-–]\s*\d+\s*s\)?\s*[:\-–]?\s*/i, '')
+        .trim());
+      parsed.clips = clips;
+      delete parsed.visualPrompt;
+    }
+    parsed.channel = channel || 'feed';
 
     return res.status(200).json(parsed);
   } catch (e) {
