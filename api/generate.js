@@ -27,11 +27,31 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ error: 'Invalid request body' }); }
 
-  const { business, detail, angle, format, duration, item, style, ratio } = body || {};
+  const { business, detail, angle, format, duration, item, style, ratio, voice, image } = body || {};
   if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
 
   const isVideo = format === 'video';
   const genPlatform = isVideo ? 'Google Flow (Veo)' : 'ChatGPT (GPT Image)';
+
+  // Voiceover direction (video only). All optional.
+  const v = voice || {};
+  const voiceBrief = isVideo ? [
+    v.gender && v.gender !== 'any' ? `Voice gender: ${v.gender}.` : '',
+    v.nationality ? `Accent / nationality: ${v.nationality}.` : '',
+    v.language ? `Language: ${v.language}.` : 'Language: English.',
+    v.tone ? `Tone: ${v.tone}.` : ''
+  ].filter(Boolean).join(' ') : '';
+
+  // Physical descriptor of an on-camera presenter, derived from the voice details
+  // (gender + nationality/ethnicity), so the VISIBLE person matches the voiceover.
+  // Applied ONLY when a person actually appears on screen — never forced into product/scene clips.
+  const personBits = isVideo ? [
+    v.gender && v.gender !== 'any' ? v.gender : '',
+    v.nationality ? v.nationality : ''
+  ].filter(Boolean).join(' ').trim() : '';
+  const personRule = (isVideo && personBits)
+    ? `ON-CAMERA PERSON MATCHING: The voiceover talent is a ${personBits} person. IF — and only if — a person appears on camera in a clip (e.g. talking-head, presenter, or UGC creator), that person MUST visibly be ${personBits} so they match the voice. Describe their appearance accordingly in that clip's prompt, consistently across clips (same individual, same wardrobe). If a clip shows only the product, scene, or environment with no person, do NOT insert a person — keep it product/scene-only.`
+    : '';
 
   // Visual STYLE shapes how the creative looks and feels — this is what drives quality.
   const STYLES = {
@@ -67,9 +87,12 @@ export default async function handler(req, res) {
     ? `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures, professional camera work. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; subjects well-composed and centered or rule-of-thirds. Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`
     : `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces or bodies awkwardly; leave headroom and margins; well-composed. Avoid distorted hands, extra limbs, or warped faces.`;
 
-  const itemLine = item
-    ? `The user will attach a reference: "${item}". The visual prompt must treat it as the real hero subject and not invent a different product.`
-    : `No reference will be attached; the visual prompt should describe a photoreal, on-brand scene to generate from scratch.`;
+  const hasImage = !!(image && image.data && image.media_type);
+  const itemLine = hasImage
+    ? `The user has UPLOADED a reference image (provided in this message). Study it carefully and write the visual prompt so the generated creative closely matches what you see — the real product, setting, colors, and style in that image. Describe the actual subject from the image; do not invent a different one. The user will attach this same image in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}`
+    : item
+      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". The visual prompt must treat it as the real hero subject and not invent a different product.`
+      : `No reference will be attached; the visual prompt should describe a photoreal, on-brand scene to generate from scratch.`;
 
   // Google Flow / Veo caps each generation at 8 seconds. Longer ads are built by
   // chaining multiple 8s clips with the Extend feature. So we break the ad into beats.
@@ -99,6 +122,8 @@ ANGLE: ${angle}
 VISUAL STYLE: ${st.name} — ${st.look}
 ASPECT RATIO: ${aspect}
 TOOL THAT WILL GENERATE THE VISUAL: ${genPlatform}
+${isVideo && voiceBrief ? `VOICEOVER DIRECTION: ${voiceBrief}` : ''}
+${personRule}
 ${durationGuide}
 ${itemLine}
 
@@ -113,8 +138,9 @@ Return JSON with exactly these keys:
   "primaryText": "post body copy. ${st.copyNote}",
   "cta": "a 2-4 word call-to-action button label",
   ${isVideo
-    ? `"clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ],
-  "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line(s) spoken during clip ${i+1}"`).join(', ')} ]`
+    ? `"speaker": "a one-line description of the voiceover talent based on the VOICEOVER DIRECTION (e.g. 'American man, warm and confident'). If no direction given, choose a fitting default.",
+  "clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ],
+  "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line spoken during clip ${i+1}"`).join(', ')} ]`
     : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform} in ${st.name} style. Include shot type, composition, lighting, mood, the aspect ratio (${aspect}), the rendering-quality and framing direction above, and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
 }
 
@@ -127,14 +153,24 @@ ${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
 - State the ${aspect} aspect ratio in each clip.
 - Keep subject, wardrobe, palette, lighting, and style consistent across all clips so they stitch seamlessly (describe the same people the same way each time).
 - Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
+${personBits ? `- WHENEVER a human appears on camera in a clip, that person must be a ${personBits} individual (matching the voiceover talent), described consistently across clips. Skip this for clips that show only product, scenery, or B-roll with no person.` : ''}
 
 RULES FOR THE "script" ARRAY:
 - Exactly ${segCount} entr${segCount>1?'ies':'y'}, one per clip, in order.
-- Each is the spoken VOICEOVER line for that ~8-second clip — natural, concise (roughly 12-22 words, what fits in 8 seconds), matching the ${st.name} tone.
-- Together they form one coherent script across the whole ad: hook → build → call to action in the final line.
-- Voiceover only — no camera or stage directions, no "[CLIP 1]" labels, just the spoken words.` : ''}
+- Each is ONLY the spoken VOICEOVER words for that ~8-second clip — natural, concise (roughly 12-22 words to fit 8 seconds).
+- ${voiceBrief ? `The words must suit the specified voiceover direction (${voiceBrief}). If a non-English language is specified, WRITE THE LINES IN THAT LANGUAGE.` : 'Default to natural English.'}
+- Together they form one coherent script: hook → build → call to action in the final line.
+- Just the spoken words — no speaker labels, no stage directions inside the line (the "speaker" field already captures who's talking).` : ''}
 
 Make this generation genuinely unique — imagine you've never written about this business before.`;
+
+  // Build the message content. If an image was uploaded, include it for analysis.
+  const userContent = hasImage
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: image.media_type, data: image.data } },
+        { type: 'text', text: user }
+      ]
+    : user;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -149,7 +185,7 @@ Make this generation genuinely unique — imagine you've never written about thi
         max_tokens: 2000,
         temperature: 1, // high temperature = more variety between generations
         system,
-        messages: [{ role: 'user', content: user }]
+        messages: [{ role: 'user', content: userContent }]
       })
     });
 
@@ -190,9 +226,12 @@ Make this generation genuinely unique — imagine you've never written about thi
       parsed.script = script;
 
       delete parsed.visualPrompt;
+      parsed.speaker = parsed.speaker || '';
     }
     parsed.style = style || 'cinematic';
     parsed.ratio = ratio || (isVideo ? 'vertical' : 'square');
+    parsed.voice = v;
+    parsed.usedImage = hasImage;
 
     return res.status(200).json(parsed);
   } catch (e) {
