@@ -27,40 +27,45 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ error: 'Invalid request body' }); }
 
-  const { business, detail, angle, format, duration, item, channel } = body || {};
+  const { business, detail, angle, format, duration, item, style, ratio } = body || {};
   if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
 
   const isVideo = format === 'video';
   const genPlatform = isVideo ? 'Google Flow (Veo)' : 'ChatGPT (GPT Image)';
 
-  // Where the finished ad will be published. This shapes tone, pacing, and aspect ratio.
-  const CHANNELS = {
-    tiktok: {
-      name: 'TikTok',
-      ratio: '9:16 vertical',
-      tone: 'Raw, native, and authentic — like a real person filmed it, NOT a polished ad. Hook MUST land in the first 1 second or viewers swipe away. Conversational, fast, trend-aware. Avoid corporate language entirely. Sound and a strong spoken or on-screen hook drive everything.',
-      copyNote: 'Write the primary text like a TikTok caption: short, punchy, lowercase-friendly, a curiosity hook up front, casual. It should feel native to the feed, not like an ad.'
+  // Visual STYLE shapes how the creative looks and feels — this is what drives quality.
+  const STYLES = {
+    ugc: {
+      name: 'UGC (authentic)',
+      look: 'Authentic user-generated-content style, as if filmed on a modern phone by a real person. Handheld but steady, natural and slightly imperfect framing, real everyday lighting, genuine and relatable. NOT slick or corporate. Feels like a real customer or worker captured it.',
+      copyNote: 'Conversational, first-person, casual and believable — like a real person talking, not an ad.'
     },
-    fb_reels: {
-      name: 'Facebook Reels',
-      ratio: '9:16 vertical',
-      tone: 'Short-form vertical, slightly more produced than TikTok and skewing to a broader/older audience. Still hook fast, but a clear value message and a confident, friendly tone work well. Mild polish is fine.',
-      copyNote: 'Write the primary text as a punchy Reels caption — clear hook, a line of value, and a nudge to act. A little more explicit about the offer than TikTok.'
+    cinematic: {
+      name: 'Cinematic',
+      look: 'High-end cinematic commercial: shallow depth of field, dramatic but natural lighting, smooth deliberate camera motion, rich color grading, premium film-like quality. Think a polished brand film.',
+      copyNote: 'Confident, evocative, premium tone. Short impactful lines.'
     },
-    ig_reels: {
-      name: 'Instagram Reels',
-      ratio: '9:16 vertical',
-      tone: 'Polished, aesthetic, visually-driven short-form. Audience expects clean, attractive visuals and aspirational tone. Hook fast but lean on visual appeal and lifestyle framing.',
-      copyNote: 'Write the primary text as a clean, aspirational Reels caption — visually evocative, benefit-led, with tasteful energy. Light, well-chosen emoji acceptable if it fits the brand.'
+    product: {
+      name: 'Product showcase',
+      look: 'Clean studio-style product showcase: crisp lighting, uncluttered background, sharp focus on the product/subject, professional commercial photography quality, tasteful and modern.',
+      copyNote: 'Benefit-led and clear, highlighting what the product/service does and why it matters.'
     },
-    feed: {
-      name: 'Facebook / Instagram Feed',
-      ratio: isVideo ? '4:5 or 1:1' : '1:1 square or 4:5 portrait',
-      tone: 'Direct-response feed ad. A more explicit sales tone is acceptable. Clear value proposition, social proof or offer, and an unambiguous call to action. Can be more produced and salesy than short-form.',
-      copyNote: 'Write the primary text as a classic high-converting feed ad: hook, build the angle, present the offer/proof, and drive to the CTA. 2-3 short paragraphs.'
+    testimonial: {
+      name: 'Testimonial / talking-head',
+      look: 'A person speaking directly to camera in a natural setting (home, jobsite, or office). Warm, trustworthy, well-lit talking-head framing with the subject centered and fully in frame. Feels like a genuine recommendation.',
+      copyNote: 'Written as a sincere personal recommendation or story, building trust.'
     }
   };
-  const ch = CHANNELS[channel] || CHANNELS.feed;
+  const st = STYLES[style] || STYLES.cinematic;
+
+  // Aspect ratio chosen by the user (vertical for reels/tiktok, square/portrait for feed).
+  const RATIOS = { vertical: '9:16 vertical', portrait: '4:5 portrait', square: '1:1 square' };
+  const aspect = RATIOS[ratio] || (isVideo ? '9:16 vertical' : '1:1 square');
+
+  // Quality directives applied to every visual prompt to avoid the chopped / low-quality look.
+  const QUALITY = isVideo
+    ? `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures, professional camera work. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; subjects well-composed and centered or rule-of-thirds. Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`
+    : `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces or bodies awkwardly; leave headroom and margins; well-composed. Avoid distorted hands, extra limbs, or warped faces.`;
 
   const itemLine = item
     ? `The user will attach a reference: "${item}". The visual prompt must treat it as the real hero subject and not invent a different product.`
@@ -73,51 +78,61 @@ export default async function handler(req, res) {
 
   const durationGuide = isVideo
     ? (isMultiSeg
-        ? `This is a ${duration}-second ${ch.ratio} video ad for ${ch.name}.
+        ? `This is a ${duration}-second ${aspect} video ad in ${st.name} style.
 IMPORTANT: Google Flow (Veo) generates a MAXIMUM of 8 seconds per clip. To reach ${duration}s, the user generates ${segCount} separate 8-second clips and chains them with Flow's "Extend" feature.
 Break the video into exactly ${segCount} self-contained 8-second clips that connect visually. Carry the same subject, lighting, and style across all clips so they match when stitched.`
-        : `This is an 8-second ${ch.ratio} video ad for ${ch.name} — a single Google Flow (Veo) generation, no chaining needed.`)
-    : `This is a single still image for ${ch.name}, ${ch.ratio}, with clear negative space reserved for a headline overlay.`;
+        : `This is an 8-second ${aspect} video ad in ${st.name} style — a single Google Flow (Veo) generation, no chaining needed.`)
+    : `This is a single still image, ${aspect}, in ${st.name} style, with clear negative space reserved for a headline overlay.`;
 
   // System prompt forces freshness and variety on every call.
-  const system = `You are a senior direct-response creative director writing high-converting social ads for specific platforms.
+  const system = `You are a senior direct-response creative director and prompt engineer for AI image and video generators.
 You write fresh, original copy every single time — never reuse phrasings, never fall back on clichés like "Look no further" or "Say goodbye to".
-Match the specific ANGLE you are given: an urgency angle must feel time-pressured; a trust angle must feel credible and reassuring; a proof angle must lean on visible results. Adapt all language to the actual business — never assume roofing unless told.
-CRITICAL: tailor tone, pacing, and style to the TARGET CHANNEL. A TikTok ad and a Facebook feed ad are completely different animals — do not write the same copy for both.
-Write like a real human marketer: specific, vivid, a little surprising. Vary sentence rhythm.
-Return ONLY valid JSON, no markdown fences, no preamble.`;
+Match the specific ANGLE: an urgency angle must feel time-pressured; a trust angle credible; a proof angle must lean on visible results. Adapt all language to the actual business — never assume roofing unless told.
+You are an expert at writing AI-video prompts that produce realistic, well-framed, high-quality results with no cropped subjects, distorted faces, or warped hands. Always include explicit framing and quality direction.
+Write like a real human marketer: specific, vivid, varied. Return ONLY valid JSON, no markdown fences, no preamble.`;
 
   const user = `Generate a complete ad package.
 
 BUSINESS: ${business}
 ${detail ? `OFFER / CONTEXT: ${detail}` : ''}
 ANGLE: ${angle}
-TARGET CHANNEL: ${ch.name}
-CHANNEL TONE & STYLE: ${ch.tone}
-COPY GUIDANCE FOR THIS CHANNEL: ${ch.copyNote}
+VISUAL STYLE: ${st.name} — ${st.look}
+ASPECT RATIO: ${aspect}
 TOOL THAT WILL GENERATE THE VISUAL: ${genPlatform}
 ${durationGuide}
 ${itemLine}
 
+${QUALITY}
+
+Every visual prompt you write MUST embody the ${st.name} style above AND include the rendering-quality and framing direction. The aspect ratio (${aspect}) must be stated in each prompt.
+
 Return JSON with exactly these keys:
 {
-  "headline": "scroll-stopping primary headline tuned for ${ch.name}, under 12 words",
+  "headline": "scroll-stopping primary headline, under 12 words",
   "headlineAlt": "a distinctly different alternate headline",
-  "primaryText": "post body copy tuned specifically for ${ch.name}. ${ch.copyNote}",
+  "primaryText": "post body copy. ${st.copyNote}",
   "cta": "a 2-4 word call-to-action button label",
   ${isVideo
-    ? `"clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ]`
-    : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform}. Include shot type, composition, lighting, mood, aspect ratio (${ch.ratio}), and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
+    ? `"clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ],
+  "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line(s) spoken during clip ${i+1}"`).join(', ')} ]`
+    : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform} in ${st.name} style. Include shot type, composition, lighting, mood, the aspect ratio (${aspect}), the rendering-quality and framing direction above, and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
 }
 
 ${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
 - Return exactly ${segCount} clip${segCount>1?'s':''}.
 - Each array item is the COMPLETE, copy-paste-ready prompt for ONE 8-second Google Flow generation — and NOTHING else.
 - Do NOT include labels like "CLIP 1", timecodes, the word "Extend", or any meta-instructions inside the clip text. The user pastes each item directly into Flow exactly as written.
-- Each clip describes only its own ~8 seconds: the action, camera motion, lighting, and audio for that beat.
-- Keep subject, palette, lighting, and style consistent across all clips so they stitch seamlessly.
+- Each clip describes only its own ~8 seconds: the action, camera motion, lighting, audio, AND explicit framing + quality direction so subjects are fully in frame and photorealistic.
+- Embody the ${st.name} visual style in every clip.
+- State the ${aspect} aspect ratio in each clip.
+- Keep subject, wardrobe, palette, lighting, and style consistent across all clips so they stitch seamlessly (describe the same people the same way each time).
 - Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
-- Match the pacing/energy to ${ch.name}.` : ''}
+
+RULES FOR THE "script" ARRAY:
+- Exactly ${segCount} entr${segCount>1?'ies':'y'}, one per clip, in order.
+- Each is the spoken VOICEOVER line for that ~8-second clip — natural, concise (roughly 12-22 words, what fits in 8 seconds), matching the ${st.name} tone.
+- Together they form one coherent script across the whole ad: hook → build → call to action in the final line.
+- Voiceover only — no camera or stage directions, no "[CLIP 1]" labels, just the spoken words.` : ''}
 
 Make this generation genuinely unique — imagine you've never written about this business before.`;
 
@@ -131,7 +146,7 @@ Make this generation genuinely unique — imagine you've never written about thi
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
+        max_tokens: 2000,
         temperature: 1, // high temperature = more variety between generations
         system,
         messages: [{ role: 'user', content: user }]
@@ -166,9 +181,18 @@ Make this generation genuinely unique — imagine you've never written about thi
         .replace(/^\s*\(?\d+\s*[-–]\s*\d+\s*s\)?\s*[:\-–]?\s*/i, '')
         .trim());
       parsed.clips = clips;
+
+      // Normalize the voiceover script into an array aligned with the clips.
+      let script = parsed.script;
+      if (!Array.isArray(script)) script = (typeof script === 'string' && script) ? [script] : [];
+      // Strip stray "Clip n:" prefixes from script lines too.
+      script = script.map(s => String(s).replace(/^\s*clip\s*\d+\s*[:\-–]\s*/i, '').trim());
+      parsed.script = script;
+
       delete parsed.visualPrompt;
     }
-    parsed.channel = channel || 'feed';
+    parsed.style = style || 'cinematic';
+    parsed.ratio = ratio || (isVideo ? 'vertical' : 'square');
 
     return res.status(200).json(parsed);
   } catch (e) {
