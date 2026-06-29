@@ -168,6 +168,17 @@
   .footer-note { margin-top: 18px; font-size: 12px; color: var(--txt-mute); line-height: 1.6; }
   .footer-note b { color: var(--txt-dim); font-weight: 600; }
 
+  /* clip cards */
+  .clip-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+  .clip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+  .clip-tag { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--txt); }
+  .clip-num { width: 22px; height: 22px; border-radius: 6px; background: var(--spark); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .clip-step { font-size: 11px; color: var(--txt-mute); font-weight: 400; }
+  .clip-body { white-space: pre-wrap; font-size: 13px; line-height: 1.65; color: var(--txt-dim); font-family: 'SF Mono','Cascadia Code',ui-monospace,monospace; }
+  .clip-extend { text-align: center; font-size: 11.5px; color: var(--txt-mute); margin: -4px 0 12px; }
+  .chan button .sf-t { font-size: 13.5px; }
+  @media (max-width: 560px){ .chan button { min-width: 46%; } }
+
   /* copy section */
   .copy-grid { display: grid; gap: 14px; }
   .cp-card {
@@ -238,18 +249,26 @@
     <div class="field"><input id="biz" type="text" placeholder="e.g. Roofing business" /></div>
     <div class="field"><input id="extra" type="text" placeholder="Optional — offer, location, or product detail" /></div>
 
-    <h2 class="step"><span class="n">2</span> Pick an angle</h2>
+    <h2 class="step"><span class="n">2</span> Where will you post it?</h2>
+    <div class="seg chan" id="chan">
+      <button data-c="tiktok"><div class="sf-t">🎵 TikTok</div><div class="sf-d">Raw, native, hook-first</div></button>
+      <button data-c="fb_reels"><div class="sf-t">▶️ Facebook Reels</div><div class="sf-d">Short-form, broad audience</div></button>
+      <button data-c="ig_reels"><div class="sf-t">📸 Instagram Reels</div><div class="sf-d">Polished, aesthetic</div></button>
+      <button data-c="feed" class="on"><div class="sf-t">📰 FB / IG Feed</div><div class="sf-d">Direct-response ad</div></button>
+    </div>
+
+    <h2 class="step"><span class="n">3</span> Pick an angle</h2>
     <div class="angles" id="angles"></div>
     <button class="ghost-btn" id="suggest">↻ Suggest angles tuned to my business (live)</button>
 
-    <h2 class="step"><span class="n">3</span> Format</h2>
+    <h2 class="step"><span class="n">4</span> Format</h2>
     <div class="seg" id="fmt">
-      <button data-f="image" class="on"><div class="sf-t">🖼 Image <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· ChatGPT</span></div><div class="sf-d">Single hero still for feed ads</div></button>
+      <button data-f="image" class="on"><div class="sf-t">🖼 Image <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· ChatGPT</span></div><div class="sf-d">Single hero still</div></button>
       <button data-f="video"><div class="sf-t">🎬 Video <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· Google Flow</span></div><div class="sf-d">Short motion ad with a hook</div></button>
     </div>
 
     <div id="durwrap" style="display:none;">
-      <h2 class="step"><span class="n">4</span> Video length</h2>
+      <h2 class="step"><span class="n">5</span> Video length</h2>
       <div class="durs" id="durs">
         <button class="dur" data-d="8"><span class="badge">1 clip</span>8s</button>
         <button class="dur on" data-d="15"><span class="badge">recommended</span>15s</button>
@@ -259,16 +278,16 @@
       <p class="dur-note" id="durnote"></p>
     </div>
 
-    <h2 class="step"><span class="n" id="itemnum">4</span> Attached item <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
+    <h2 class="step"><span class="n" id="itemnum">5</span> Attached item <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
     <div class="field"><input id="item" type="text" placeholder="Describe what you'll attach (e.g. photo of a finished metal roof). Leave blank to invent a scene." /></div>
 
     <button class="gen" id="gen">Generate fresh ad</button>
     <div id="errbox"></div>
 
     <div class="out-wrap" id="outwrap">
-      <div class="out-head"><h3 id="outtitle">Visual prompt</h3><button class="copy-btn" id="copy">⧉ Copy</button></div>
-      <div class="out" id="out"></div>
-      <p class="footer-note" id="footernote"><b>Next step:</b> paste this into <span id="platname">ChatGPT</span>, attach your reference if you have one, and generate.</p>
+      <div class="out-head"><h3 id="outtitle">Visual prompt</h3></div>
+      <div id="visualzone"></div>
+      <p class="footer-note" id="footernote"></p>
 
       <h2 class="step" style="margin-top:34px;"><span class="n">✎</span> Ad copy — headline + post text</h2>
       <div class="copy-grid">
@@ -293,7 +312,8 @@ const DUR_NOTE = {
   '20':'20s = 3 chained clips. Flow generates 8s at a time; you\u2019ll render 3 segments and chain them. Room for problem \u2192 solution \u2192 CTA.',
   '30':'30s = 4 chained clips. A full mini-story across 4 segments. Uses more daily credits \u2014 plan around your free 50/day.'
 };
-let state = { fmt:'image', dur:'15', angleIdx:null, angleText:'' };
+let state = { fmt:'image', dur:'15', angleIdx:null, angleText:'', channel:'feed' };
+const CHAN_LABEL = { tiktok:'TikTok', fb_reels:'Facebook Reels', ig_reels:'Instagram Reels', feed:'FB / IG Feed' };
 
 function renderAngles(){
   const c=document.getElementById('angles'); c.innerHTML='';
@@ -307,13 +327,20 @@ function renderAngles(){
 }
 renderAngles();
 
+document.querySelectorAll('#chan button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#chan button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.channel=b.dataset.c;
+  };
+});
+
 document.querySelectorAll('#fmt button').forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll('#fmt button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); state.fmt=b.dataset.f;
     const vid=state.fmt==='video';
     document.getElementById('durwrap').style.display=vid?'block':'none';
-    document.getElementById('itemnum').textContent=vid?'5':'4';
+    document.getElementById('itemnum').textContent=vid?'6':'5';
   };
 });
 function setDurNote(){ document.getElementById('durnote').textContent=DUR_NOTE[state.dur]; }
@@ -330,7 +357,7 @@ async function callAPI(){
   const detail=document.getElementById('extra').value.trim();
   const angle=state.angleText||(ANGLES[0].t+' \u2014 '+ANGLES[0].d);
   const item=document.getElementById('item').value.trim();
-  const payload={ business, detail, angle, format:state.fmt, duration:state.dur, item };
+  const payload={ business, detail, angle, format:state.fmt, duration:state.dur, item, channel:state.channel };
   const r=await fetch('/api/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if(!r.ok){
     let msg='Generation failed.';
@@ -343,20 +370,56 @@ async function callAPI(){
 function showErr(m){ document.getElementById('errbox').innerHTML='<div class="err">'+m+'</div>'; }
 function clearErr(){ document.getElementById('errbox').innerHTML=''; }
 
+function attachCopy(btn, getText){
+  btn.onclick=()=>{
+    navigator.clipboard.writeText(getText()).then(()=>{
+      const o=btn.innerHTML; btn.innerHTML='\u2713 Copied'; btn.classList.add('done');
+      setTimeout(()=>{ btn.innerHTML=o; btn.classList.remove('done'); },1500);
+    });
+  };
+}
+
 function fillOutput(c){
   lastResult=c;
-  document.getElementById('out').textContent=c.visualPrompt||'';
-  document.getElementById('platname').textContent=state.fmt==='image'?'ChatGPT':'Google Flow';
-  document.getElementById('outtitle').textContent=state.fmt==='image'?'Image prompt \u2014 ChatGPT':'Video prompt \u2014 Google Flow';
-  const fn=document.getElementById('footernote');
+  const chName = CHAN_LABEL[c.channel||state.channel] || 'Feed';
+  const zone=document.getElementById('visualzone');
+  zone.innerHTML='';
+
   if(state.fmt==='image'){
-    fn.innerHTML='<b>Next step:</b> paste this into ChatGPT, attach your reference if you have one, and generate.';
+    document.getElementById('outtitle').textContent='Image prompt \u2014 ChatGPT \u00b7 '+chName;
+    const card=document.createElement('div'); card.className='clip-card';
+    const head=document.createElement('div'); head.className='clip-head';
+    head.innerHTML='<span class="clip-tag"><span class="clip-num">\u25a3</span> Image prompt</span>';
+    const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy';
+    head.appendChild(cbtn); card.appendChild(head);
+    const body=document.createElement('div'); body.className='clip-body'; body.textContent=c.visualPrompt||'';
+    card.appendChild(body); zone.appendChild(card);
+    attachCopy(cbtn, ()=>c.visualPrompt||'');
+    document.getElementById('footernote').innerHTML='<b>Next step:</b> paste this into ChatGPT, attach your reference if you have one, and generate. Built for '+chName+' ('+'\u00a0'+'aspect ratio noted in the prompt).';
   } else {
-    const segs=Math.max(1, Math.ceil(parseInt(state.dur,10)/8));
-    fn.innerHTML = segs>1
-      ? '<b>Next step:</b> in Google Flow, generate <b>CLIP 1</b> first, then use <b>Extend</b> and paste <b>CLIP 2</b>, and so on \u2014 '+segs+' clips total for your '+state.dur+'s ad. Each clip is one generation (\u22488s), so this uses '+segs+' of your daily Flow credits.'
-      : '<b>Next step:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed.';
+    const clips = Array.isArray(c.clips) ? c.clips : (c.visualPrompt? [c.visualPrompt] : []);
+    document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+chName+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
+    clips.forEach((clip,i)=>{
+      const card=document.createElement('div'); card.className='clip-card';
+      const head=document.createElement('div'); head.className='clip-head';
+      const stepLabel = i===0 ? 'Generate first' : 'Then tap Extend, paste this';
+      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Clip '+(i+1)+' <span class="clip-step">'+stepLabel+'</span></span>';
+      const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy clip '+(i+1);
+      head.appendChild(cbtn); card.appendChild(head);
+      const body=document.createElement('div'); body.className='clip-body'; body.textContent=clip;
+      card.appendChild(body); zone.appendChild(card);
+      attachCopy(cbtn, ()=>clip);
+      if(i<clips.length-1){
+        const ext=document.createElement('div'); ext.className='clip-extend'; ext.textContent='\u2193 use Flow\u2019s Extend, then paste the next clip \u2193';
+        zone.appendChild(ext);
+      }
+    });
+    const fn=document.getElementById('footernote');
+    fn.innerHTML = clips.length>1
+      ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. Tuned for '+chName+'.'
+      : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. Tuned for '+chName+'.';
   }
+
   document.getElementById('cp-headline').textContent=c.headline||'';
   document.getElementById('cp-headline-alt').textContent=c.headlineAlt||'';
   document.getElementById('cp-body').textContent=c.primaryText||'';
@@ -410,9 +473,6 @@ document.querySelectorAll('.mini-copy').forEach(btn=>{
     navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent='\u2713 Copied'; btn.classList.add('done'); setTimeout(()=>{btn.textContent=o;btn.classList.remove('done');},1500); });
   };
 });
-document.getElementById('copy').onclick=function(){
-  navigator.clipboard.writeText(document.getElementById('out').textContent).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy';this.classList.remove('done');},1800); });
-};
 
 const KEY='adspark_live_history_v1';
 function loadHist(){ try{return JSON.parse(localStorage.getItem(KEY))||[];}catch{return [];} }
@@ -425,7 +485,7 @@ function renderHist(){
     const el=document.createElement('div'); el.className='hist-item';
     const tag=it.fmt==='image'?'IMG':it.dur+'s';
     el.innerHTML='<div class="ht">'+it.biz+' <span class="tag '+(it.fmt==='image'?'img':'vid')+'">'+tag+'</span></div><div class="hb">'+it.angle+'</div>';
-    el.onclick=()=>{ state.fmt=it.fmt; state.dur=it.dur; fillOutput(it.result); window.scrollTo({top:0,behavior:'smooth'}); };
+    el.onclick=()=>{ state.fmt=it.fmt; state.dur=it.dur; if(it.result&&it.result.channel) state.channel=it.result.channel; fillOutput(it.result); window.scrollTo({top:0,behavior:'smooth'}); };
     c.appendChild(el);
   });
 }
