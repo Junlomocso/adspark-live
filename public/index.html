@@ -178,6 +178,10 @@
   .clip-extend { text-align: center; font-size: 11.5px; color: var(--txt-mute); margin: -4px 0 12px; }
   .chan button .sf-t { font-size: 13.5px; }
   @media (max-width: 560px){ .chan button { min-width: 46%; } }
+  .scr-line { display: flex; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .scr-line:last-child { border-bottom: none; }
+  .scr-num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 11px; color: var(--spark); font-weight: 700; }
+  .scr-txt { font-size: 14px; color: var(--txt); line-height: 1.55; }
 
   /* copy section */
   .copy-grid { display: grid; gap: 14px; }
@@ -249,12 +253,12 @@
     <div class="field"><input id="biz" type="text" placeholder="e.g. Roofing business" /></div>
     <div class="field"><input id="extra" type="text" placeholder="Optional — offer, location, or product detail" /></div>
 
-    <h2 class="step"><span class="n">2</span> Where will you post it?</h2>
-    <div class="seg chan" id="chan">
-      <button data-c="tiktok"><div class="sf-t">🎵 TikTok</div><div class="sf-d">Raw, native, hook-first</div></button>
-      <button data-c="fb_reels"><div class="sf-t">▶️ Facebook Reels</div><div class="sf-d">Short-form, broad audience</div></button>
-      <button data-c="ig_reels"><div class="sf-t">📸 Instagram Reels</div><div class="sf-d">Polished, aesthetic</div></button>
-      <button data-c="feed" class="on"><div class="sf-t">📰 FB / IG Feed</div><div class="sf-d">Direct-response ad</div></button>
+    <h2 class="step"><span class="n">2</span> Visual style</h2>
+    <div class="seg chan" id="styl">
+      <button data-s="ugc"><div class="sf-t">📱 UGC</div><div class="sf-d">Authentic, phone-shot</div></button>
+      <button data-s="cinematic" class="on"><div class="sf-t">🎬 Cinematic</div><div class="sf-d">Polished, film-like</div></button>
+      <button data-s="product"><div class="sf-t">📦 Product showcase</div><div class="sf-d">Clean, studio look</div></button>
+      <button data-s="testimonial"><div class="sf-t">🗣 Testimonial</div><div class="sf-d">Talking-head, trust</div></button>
     </div>
 
     <h2 class="step"><span class="n">3</span> Pick an angle</h2>
@@ -267,8 +271,15 @@
       <button data-f="video"><div class="sf-t">🎬 Video <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· Google Flow</span></div><div class="sf-d">Short motion ad with a hook</div></button>
     </div>
 
+    <h2 class="step"><span class="n">5</span> Aspect ratio</h2>
+    <div class="durs" id="ratios">
+      <button class="dur on" data-r="vertical">9:16 Vertical <span class="clip-step">Reels / TikTok / Stories</span></button>
+      <button class="dur" data-r="portrait">4:5 Portrait <span class="clip-step">Feed</span></button>
+      <button class="dur" data-r="square">1:1 Square <span class="clip-step">Feed</span></button>
+    </div>
+
     <div id="durwrap" style="display:none;">
-      <h2 class="step"><span class="n">5</span> Video length</h2>
+      <h2 class="step"><span class="n">6</span> Video length</h2>
       <div class="durs" id="durs">
         <button class="dur" data-d="8"><span class="badge">1 clip</span>8s</button>
         <button class="dur on" data-d="15"><span class="badge">recommended</span>15s</button>
@@ -278,7 +289,7 @@
       <p class="dur-note" id="durnote"></p>
     </div>
 
-    <h2 class="step"><span class="n" id="itemnum">5</span> Attached item <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
+    <h2 class="step"><span class="n" id="itemnum">6</span> Attached item <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
     <div class="field"><input id="item" type="text" placeholder="Describe what you'll attach (e.g. photo of a finished metal roof). Leave blank to invent a scene." /></div>
 
     <button class="gen" id="gen">Generate fresh ad</button>
@@ -288,6 +299,14 @@
       <div class="out-head"><h3 id="outtitle">Visual prompt</h3></div>
       <div id="visualzone"></div>
       <p class="footer-note" id="footernote"></p>
+
+      <div id="scriptzone" style="display:none;">
+        <h2 class="step" style="margin-top:34px;"><span class="n">🎙</span> Voiceover script <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— one line per clip</span></h2>
+        <div class="cp-card">
+          <div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Full script</span><button class="mini-copy" id="copyscript">⧉ Copy all</button></div>
+          <div id="scriptlist"></div>
+        </div>
+      </div>
 
       <h2 class="step" style="margin-top:34px;"><span class="n">✎</span> Ad copy — headline + post text</h2>
       <div class="copy-grid">
@@ -312,8 +331,9 @@ const DUR_NOTE = {
   '20':'20s = 3 chained clips. Flow generates 8s at a time; you\u2019ll render 3 segments and chain them. Room for problem \u2192 solution \u2192 CTA.',
   '30':'30s = 4 chained clips. A full mini-story across 4 segments. Uses more daily credits \u2014 plan around your free 50/day.'
 };
-let state = { fmt:'image', dur:'15', angleIdx:null, angleText:'', channel:'feed' };
-const CHAN_LABEL = { tiktok:'TikTok', fb_reels:'Facebook Reels', ig_reels:'Instagram Reels', feed:'FB / IG Feed' };
+let state = { fmt:'image', dur:'15', angleIdx:null, angleText:'', style:'cinematic', ratio:'vertical' };
+const STYLE_LABEL = { ugc:'UGC', cinematic:'Cinematic', product:'Product showcase', testimonial:'Testimonial' };
+const RATIO_LABEL = { vertical:'9:16 Vertical', portrait:'4:5 Portrait', square:'1:1 Square' };
 
 function renderAngles(){
   const c=document.getElementById('angles'); c.innerHTML='';
@@ -327,10 +347,16 @@ function renderAngles(){
 }
 renderAngles();
 
-document.querySelectorAll('#chan button').forEach(b=>{
+document.querySelectorAll('#styl button').forEach(b=>{
   b.onclick=()=>{
-    document.querySelectorAll('#chan button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on'); state.channel=b.dataset.c;
+    document.querySelectorAll('#styl button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.style=b.dataset.s;
+  };
+});
+document.querySelectorAll('#ratios button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#ratios button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.ratio=b.dataset.r;
   };
 });
 
@@ -340,7 +366,7 @@ document.querySelectorAll('#fmt button').forEach(b=>{
     b.classList.add('on'); state.fmt=b.dataset.f;
     const vid=state.fmt==='video';
     document.getElementById('durwrap').style.display=vid?'block':'none';
-    document.getElementById('itemnum').textContent=vid?'6':'5';
+    document.getElementById('itemnum').textContent=vid?'7':'6';
   };
 });
 function setDurNote(){ document.getElementById('durnote').textContent=DUR_NOTE[state.dur]; }
@@ -357,7 +383,7 @@ async function callAPI(){
   const detail=document.getElementById('extra').value.trim();
   const angle=state.angleText||(ANGLES[0].t+' \u2014 '+ANGLES[0].d);
   const item=document.getElementById('item').value.trim();
-  const payload={ business, detail, angle, format:state.fmt, duration:state.dur, item, channel:state.channel };
+  const payload={ business, detail, angle, format:state.fmt, duration:state.dur, item, style:state.style, ratio:state.ratio };
   const r=await fetch('/api/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if(!r.ok){
     let msg='Generation failed.';
@@ -381,12 +407,15 @@ function attachCopy(btn, getText){
 
 function fillOutput(c){
   lastResult=c;
-  const chName = CHAN_LABEL[c.channel||state.channel] || 'Feed';
+  const styName = STYLE_LABEL[c.style||state.style] || 'Cinematic';
+  const ratName = RATIO_LABEL[c.ratio||state.ratio] || '9:16 Vertical';
+  const tag = styName+' \u00b7 '+ratName;
   const zone=document.getElementById('visualzone');
   zone.innerHTML='';
+  const scriptzone=document.getElementById('scriptzone');
 
   if(state.fmt==='image'){
-    document.getElementById('outtitle').textContent='Image prompt \u2014 ChatGPT \u00b7 '+chName;
+    document.getElementById('outtitle').textContent='Image prompt \u2014 ChatGPT \u00b7 '+tag;
     const card=document.createElement('div'); card.className='clip-card';
     const head=document.createElement('div'); head.className='clip-head';
     head.innerHTML='<span class="clip-tag"><span class="clip-num">\u25a3</span> Image prompt</span>';
@@ -395,10 +424,11 @@ function fillOutput(c){
     const body=document.createElement('div'); body.className='clip-body'; body.textContent=c.visualPrompt||'';
     card.appendChild(body); zone.appendChild(card);
     attachCopy(cbtn, ()=>c.visualPrompt||'');
-    document.getElementById('footernote').innerHTML='<b>Next step:</b> paste this into ChatGPT, attach your reference if you have one, and generate. Built for '+chName+' ('+'\u00a0'+'aspect ratio noted in the prompt).';
+    document.getElementById('footernote').innerHTML='<b>Next step:</b> paste this into ChatGPT, attach your reference if you have one, and generate. '+styName+' style, '+ratName+'.';
+    scriptzone.style.display='none';
   } else {
     const clips = Array.isArray(c.clips) ? c.clips : (c.visualPrompt? [c.visualPrompt] : []);
-    document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+chName+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
+    document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+tag+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
     clips.forEach((clip,i)=>{
       const card=document.createElement('div'); card.className='clip-card';
       const head=document.createElement('div'); head.className='clip-head';
@@ -416,8 +446,23 @@ function fillOutput(c){
     });
     const fn=document.getElementById('footernote');
     fn.innerHTML = clips.length>1
-      ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. Tuned for '+chName+'.'
-      : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. Tuned for '+chName+'.';
+      ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. '+styName+' style, '+ratName+'.'
+      : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. '+styName+' style, '+ratName+'.';
+
+    // Voiceover script
+    const script = Array.isArray(c.script) ? c.script : [];
+    const list=document.getElementById('scriptlist');
+    list.innerHTML='';
+    if(script.length){
+      script.forEach((line,i)=>{
+        const row=document.createElement('div'); row.className='scr-line';
+        row.innerHTML='<span class="scr-num">'+(i+1)+'</span><span class="scr-txt">'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
+        list.appendChild(row);
+      });
+      scriptzone.style.display='block';
+    } else {
+      scriptzone.style.display='none';
+    }
   }
 
   document.getElementById('cp-headline').textContent=c.headline||'';
@@ -473,6 +518,12 @@ document.querySelectorAll('.mini-copy').forEach(btn=>{
     navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent='\u2713 Copied'; btn.classList.add('done'); setTimeout(()=>{btn.textContent=o;btn.classList.remove('done');},1500); });
   };
 });
+document.getElementById('copyscript').onclick=function(){
+  const s=(lastResult&&Array.isArray(lastResult.script))?lastResult.script:[];
+  if(!s.length) return;
+  const txt=s.map((l,i)=>'Clip '+(i+1)+': '+l).join('\n');
+  navigator.clipboard.writeText(txt).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy all';this.classList.remove('done');},1500); });
+};
 
 const KEY='adspark_live_history_v1';
 function loadHist(){ try{return JSON.parse(localStorage.getItem(KEY))||[];}catch{return [];} }
@@ -485,7 +536,7 @@ function renderHist(){
     const el=document.createElement('div'); el.className='hist-item';
     const tag=it.fmt==='image'?'IMG':it.dur+'s';
     el.innerHTML='<div class="ht">'+it.biz+' <span class="tag '+(it.fmt==='image'?'img':'vid')+'">'+tag+'</span></div><div class="hb">'+it.angle+'</div>';
-    el.onclick=()=>{ state.fmt=it.fmt; state.dur=it.dur; if(it.result&&it.result.channel) state.channel=it.result.channel; fillOutput(it.result); window.scrollTo({top:0,behavior:'smooth'}); };
+    el.onclick=()=>{ state.fmt=it.fmt; state.dur=it.dur; if(it.result){ if(it.result.style) state.style=it.result.style; if(it.result.ratio) state.ratio=it.result.ratio; } fillOutput(it.result); window.scrollTo({top:0,behavior:'smooth'}); };
     c.appendChild(el);
   });
 }
