@@ -1,325 +1,703 @@
-// api/generate.js — Vercel serverless function
-// Holds your Claude API key securely (server-side) and generates fresh, unique ad copy on every request.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AdSpark — Real-Time Ad Generator</title>
+<meta name="description" content="Generate fresh, unique ad creative and copy on demand. Pick an angle, choose a format, get a brand-new idea every time." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
 
-export default async function handler(req, res) {
-  // Basic CORS so the page can call this
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Server not configured: missing ANTHROPIC_API_KEY' });
-
-  // --- simple daily spend guard (in-memory; resets when the function cold-starts) ---
-  // For a hard cap, ALSO set a monthly spending limit in the Anthropic Console.
-  const DAILY_LIMIT = parseInt(process.env.DAILY_REQUEST_LIMIT || '500', 10);
-  globalThis.__count = globalThis.__count || { day: new Date().toDateString(), n: 0 };
-  const today = new Date().toDateString();
-  if (globalThis.__count.day !== today) globalThis.__count = { day: today, n: 0 };
-  if (globalThis.__count.n >= DAILY_LIMIT) {
-    return res.status(429).json({ error: 'Daily generation limit reached. Try again tomorrow.' });
+  :root {
+    --bg: #0d0e12;
+    --panel: #15171d;
+    --panel-2: #1b1e26;
+    --line: #262a35;
+    --line-2: #343948;
+    --txt: #eef0f5;
+    --txt-dim: #99a0ad;
+    --txt-mute: #686f7d;
+    --spark: #ff6a3d;
+    --spark-soft: #2a1812;
+    --accent: #5b8cff;
+    --accent-soft: #13203f;
+    --ok: #3ecf8e;
+    --radius: 12px;
   }
-  globalThis.__count.n++;
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--txt);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  h1, h2, h3, .brand { font-family: 'Sora', sans-serif; }
 
-  let body;
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
-  catch { return res.status(400).json({ error: 'Invalid request body' }); }
+  /* ---- shell ---- */
+  .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  @media (max-width: 820px) { .shell { grid-template-columns: 1fr; } .side { display: none; } }
 
-  const { business, detail, angle, duration, item, style, ratio, voice, offerType, productImage, settingImage } = body || {};
-  if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
+  /* ---- sidebar ---- */
+  .side {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 18px;
+    display: flex; flex-direction: column; gap: 8px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 19px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.02em;
+  }
+  .brand .dot {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--spark); display: grid; place-items: center;
+    color: #fff; font-size: 15px;
+  }
+  .side-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--txt-mute); margin: 18px 4px 8px; }
+  .hist-item {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; cursor: pointer;
+    font-size: 12.5px; color: var(--txt-dim); transition: border-color .15s;
+  }
+  .hist-item:hover { border-color: var(--line-2); }
+  .hist-item .ht { color: var(--txt); font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .hist-item .hb { margin-top: 3px; font-size: 11.5px; color: var(--txt-mute); }
+  .hist-empty { font-size: 12.5px; color: var(--txt-mute); padding: 10px 4px; line-height: 1.5; }
+  .tag { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-weight: 600; }
+  .tag.img { background: var(--accent-soft); color: #9bb6ff; }
+  .tag.vid { background: var(--spark-soft); color: #ff9b7a; }
 
-  const isService = offerType === 'service';
-  const offerWord = isService ? 'service' : 'product';
+  /* ---- main ---- */
+  .main { padding: 32px 36px 64px; max-width: 920px; }
+  @media (max-width: 820px) { .main { padding: 20px 18px 48px; } }
+  .mobile-brand { display: none; }
+  @media (max-width: 820px) {
+    .mobile-brand { display: flex; align-items: center; gap: 10px; font-family: 'Sora'; font-weight: 700; font-size: 18px; margin-bottom: 18px; }
+    .mobile-brand .dot { width: 26px; height: 26px; border-radius: 7px; background: var(--spark); display: grid; place-items: center; color:#fff; }
+  }
+  .lead { font-size: 14px; color: var(--txt-dim); margin-bottom: 28px; max-width: 560px; }
+  h2.step { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--txt-mute); margin: 26px 0 12px; display: flex; align-items: center; gap: 8px; }
+  h2.step .n { width: 20px; height: 20px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); display: grid; place-items: center; font-size: 11px; color: var(--spark); font-weight: 700; }
 
-  // AdSpark is video-only. Everything generates Google Flow (Veo) video prompts.
-  const isVideo = true;
-  const genPlatform = 'Google Flow (Veo)';
+  label.cap { display: block; font-size: 13px; color: var(--txt-dim); margin-bottom: 7px; }
+  input[type=text], textarea {
+    width: 100%; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 11px 13px; color: var(--txt);
+    font-family: inherit; font-size: 14px; transition: border-color .15s;
+  }
+  input[type=text]:focus, textarea:focus { outline: none; border-color: var(--spark); }
+  input::placeholder, textarea::placeholder { color: var(--txt-mute); }
+  .field { margin-bottom: 12px; }
 
-  // Voiceover direction (video only). All optional.
-  const v = voice || {};
-  const voiceBrief = isVideo ? [
-    v.gender && v.gender !== 'any' ? `Voice gender: ${v.gender}.` : '',
-    v.nationality ? `Accent / nationality: ${v.nationality}.` : '',
-    v.language ? `Language: ${v.language}.` : 'Language: English.',
-    v.tone ? `Tone: ${v.tone}.` : ''
-  ].filter(Boolean).join(' ') : '';
+  /* angle cards */
+  .angles { display: grid; gap: 9px; }
+  .ang {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 11px; padding: 13px 15px; cursor: pointer; transition: all .15s;
+  }
+  .ang:hover { border-color: var(--line-2); }
+  .ang.on { border-color: var(--spark); background: var(--spark-soft); }
+  .ang .ic { font-size: 18px; line-height: 1.4; }
+  .ang .at { font-size: 14px; font-weight: 600; color: var(--txt); }
+  .ang .ad { font-size: 12.5px; color: var(--txt-dim); margin-top: 2px; }
+  .ghost-btn {
+    background: var(--panel); border: 1px dashed var(--line-2); color: var(--txt-dim);
+    border-radius: 10px; padding: 11px; width: 100%; cursor: pointer; font-family: inherit;
+    font-size: 13px; margin-top: 9px; transition: all .15s;
+  }
+  .ghost-btn:hover { color: var(--txt); border-color: var(--spark); }
 
-  // Physical descriptor of an on-camera presenter, derived from the voice details
-  // (gender + nationality/ethnicity), so the VISIBLE person matches the voiceover.
-  // Applied ONLY when a person actually appears on screen — never forced into product/scene clips.
-  const personBits = isVideo ? [
-    v.gender && v.gender !== 'any' ? v.gender : '',
-    v.nationality ? v.nationality : ''
-  ].filter(Boolean).join(' ').trim() : '';
-  const personRule = (isVideo && personBits)
-    ? `ON-CAMERA PERSON MATCHING: The voiceover talent is a ${personBits} person. IF — and only if — a person appears on camera in a clip (e.g. talking-head, presenter, or UGC creator), that person MUST visibly be ${personBits} so they match the voice. Describe their appearance accordingly in that clip's prompt, consistently across clips (same individual, same wardrobe). If a clip shows only the product, scene, or environment with no person, do NOT insert a person — keep it product/scene-only.`
-    : '';
+  /* format toggle */
+  .seg { display: flex; gap: 10px; flex-wrap: wrap; }
+  .seg button {
+    flex: 1; min-width: 150px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 11px; padding: 14px; cursor: pointer; font-family: inherit;
+    color: var(--txt-dim); text-align: left; transition: all .15s;
+  }
+  .seg button:hover { border-color: var(--line-2); }
+  .seg button.on { border-color: var(--spark); background: var(--spark-soft); color: var(--txt); }
+  .seg .sf-t { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .seg .sf-d { font-size: 12px; color: var(--txt-mute); margin-top: 3px; }
 
-  // Visual STYLE shapes how the creative looks and feels — this is what drives quality.
-  const STYLES = {
-    ugc: {
-      name: 'UGC (authentic)',
-      look: 'Authentic user-generated-content style, as if filmed on a modern phone by a real person. Handheld but steady, natural and slightly imperfect framing, real everyday lighting, genuine and relatable. NOT slick or corporate. Feels like a real customer or worker captured it.',
-      copyNote: 'Conversational, first-person, casual and believable — like a real person talking, not an ad.'
-    },
-    cinematic: {
-      name: 'Cinematic',
-      look: 'High-end cinematic commercial: shallow depth of field, dramatic but natural lighting, smooth deliberate camera motion, rich color grading, premium film-like quality. Think a polished brand film.',
-      copyNote: 'Confident, evocative, premium tone. Short impactful lines.'
-    },
-    product: {
-      name: 'Product showcase',
-      look: 'Clean studio-style product showcase: crisp lighting, uncluttered background, sharp focus on the product/subject, professional commercial photography quality, tasteful and modern.',
-      copyNote: 'Benefit-led and clear, highlighting what the product/service does and why it matters.'
-    },
-    testimonial: {
-      name: 'Testimonial / talking-head',
-      look: 'A person speaking directly to camera in a natural setting (home, jobsite, or office). Warm, trustworthy, well-lit talking-head framing with the subject centered and fully in frame. Feels like a genuine recommendation.',
-      copyNote: 'Written as a sincere personal recommendation or story, building trust.'
+  /* duration */
+  .durs { display: flex; gap: 9px; flex-wrap: wrap; }
+  .dur {
+    position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 18px; cursor: pointer; font-family: inherit;
+    font-size: 13.5px; color: var(--txt-dim); font-weight: 500; transition: all .15s;
+  }
+  .dur:hover { border-color: var(--line-2); }
+  .dur.on { border-color: var(--spark); background: var(--spark-soft); color: var(--txt); }
+  .dur .badge {
+    position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+    background: var(--spark); color: #fff; font-size: 9px; font-weight: 700;
+    padding: 1px 8px; border-radius: 999px; white-space: nowrap; letter-spacing: 0.02em;
+  }
+  .dur-note { font-size: 12.5px; color: var(--txt-mute); margin-top: 12px; line-height: 1.5; }
+
+  .gen {
+    background: var(--spark); color: #fff; border: none; border-radius: 11px;
+    padding: 15px; width: 100%; cursor: pointer; font-family: 'Sora'; font-weight: 600;
+    font-size: 15px; margin-top: 28px; transition: transform .1s, filter .15s;
+  }
+  .gen:hover { filter: brightness(1.07); }
+  .gen:active { transform: scale(0.99); }
+
+  /* output */
+  .out-wrap { margin-top: 28px; display: none; }
+  .out-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+  .out-head h3 { font-size: 15px; font-weight: 600; }
+  .copy-btn {
+    background: var(--panel-2); border: 1px solid var(--line-2); color: var(--txt);
+    border-radius: 9px; padding: 8px 16px; cursor: pointer; font-family: inherit;
+    font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 7px; transition: all .15s;
+  }
+  .copy-btn:hover { border-color: var(--spark); }
+  .copy-btn.done { color: var(--ok); border-color: var(--ok); }
+  .out {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 22px; white-space: pre-wrap; font-size: 13.5px; line-height: 1.7;
+    color: var(--txt); font-family: 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  }
+  .footer-note { margin-top: 18px; font-size: 12px; color: var(--txt-mute); line-height: 1.6; }
+  .footer-note b { color: var(--txt-dim); font-weight: 600; }
+
+  /* clip cards */
+  .clip-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+  .clip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+  .clip-tag { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--txt); }
+  .clip-num { width: 22px; height: 22px; border-radius: 6px; background: var(--spark); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .clip-step { font-size: 11px; color: var(--txt-mute); font-weight: 400; }
+  .clip-body { white-space: pre-wrap; font-size: 13px; line-height: 1.65; color: var(--txt-dim); font-family: 'SF Mono','Cascadia Code',ui-monospace,monospace; }
+  .clip-extend { text-align: center; font-size: 11.5px; color: var(--txt-mute); margin: -4px 0 12px; }
+  .chan button .sf-t { font-size: 13.5px; }
+  @media (max-width: 560px){ .chan button { min-width: 46%; } }
+  .scr-line { display: flex; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .scr-line:last-child { border-bottom: none; }
+  .scr-num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 11px; color: var(--spark); font-weight: 700; }
+  .scr-txt { font-size: 14px; color: var(--txt); line-height: 1.55; }
+  .vlbl { display:block; font-size:12px; color:var(--txt-mute); margin: 0 0 7px; }
+  .vfield { margin-bottom: 12px; }
+  .vrow { display:flex; gap:10px; }
+  .vrow .field { flex:1; }
+  @media (max-width:560px){ .vrow { flex-direction:column; gap:0; } }
+  .uploader { display:flex; align-items:center; gap:8px; padding:13px 15px; border:1px dashed var(--line-2); border-radius:10px; cursor:pointer; color:var(--txt-dim); font-size:13px; transition:all .15s; }
+  .uploader:hover { border-color:var(--spark); color:var(--txt); }
+  .uploader.has { border-style:solid; border-color:var(--spark); }
+  .imgprev { margin-top:10px; display:flex; align-items:center; gap:12px; }
+  .imgprev img { width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line-2); }
+  .imgprev .rm { background:var(--panel-2); border:1px solid var(--line-2); color:var(--txt-dim); border-radius:7px; padding:5px 12px; cursor:pointer; font-size:12px; font-family:inherit; }
+  .imgprev .rm:hover { border-color:#5b2326; color:#ff9b9b; }
+  .speaker-tag { display:inline-block; background:var(--accent-soft); color:#9bb6ff; font-size:12px; font-weight:600; padding:4px 12px; border-radius:999px; margin-bottom:10px; }
+
+  /* copy section */
+  .copy-grid { display: grid; gap: 14px; }
+  .cp-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .cp-card .cp-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 9px; gap: 10px;
+  }
+  .cp-card .cp-lbl {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--txt-mute); font-weight: 600; display: flex; align-items: center; gap: 7px;
+  }
+  .cp-card .cp-lbl .ci { color: var(--spark); font-size: 13px; }
+  .mini-copy {
+    background: transparent; border: 1px solid var(--line-2); color: var(--txt-dim);
+    border-radius: 7px; padding: 4px 11px; cursor: pointer; font-family: inherit;
+    font-size: 11.5px; font-weight: 500; transition: all .15s; white-space: nowrap;
+  }
+  .mini-copy:hover { border-color: var(--spark); color: var(--txt); }
+  .mini-copy.done { color: var(--ok); border-color: var(--ok); }
+  .cp-headline { font-family: 'Sora'; font-size: 19px; font-weight: 600; color: var(--txt); line-height: 1.3; }
+  .cp-body { font-size: 14px; color: var(--txt); line-height: 1.65; white-space: pre-wrap; }
+  .cp-cta {
+    display: inline-block; background: var(--spark-soft); color: #ff9b7a;
+    font-size: 13.5px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+  }
+  .cp-alt { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .cp-alt .al { font-size: 11px; color: var(--txt-mute); margin-bottom: 4px; }
+  .cp-alt .av { font-family: 'Sora'; font-size: 15px; font-weight: 500; color: var(--txt-dim); }
+  .regen {
+    background: var(--panel-2); border: 1px solid var(--line-2); color: var(--txt-dim);
+    border-radius: 9px; padding: 9px 16px; cursor: pointer; font-family: inherit;
+    font-size: 13px; font-weight: 500; margin-top: 14px; transition: all .15s;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .regen:hover { border-color: var(--spark); color: var(--txt); }
+
+
+</style>
+<style>
+  .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:-3px;margin-right:8px;}
+  @keyframes spin { to { transform:rotate(360deg);} }
+  .err { background:#2a1416;border:1px solid #5b2326;color:#ff9b9b;padding:12px 15px;border-radius:10px;font-size:13px;margin-top:16px;}
+  .live-badge{display:inline-flex;align-items:center;gap:6px;background:var(--spark-soft);color:#ff9b7a;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;margin-left:10px;vertical-align:middle;}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:#3ecf8e;animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="dot">✦</span> AdSpark</div>
+    <div class="side-lbl">Saved prompts</div>
+    <div id="history"></div>
+    <div style="margin-top:auto; padding-top:18px; font-size:11px; color:var(--txt-mute); line-height:1.5;">
+      Live AI generation. Saved prompts stay in this browser only.
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="mobile-brand"><span class="dot">✦</span> AdSpark</div>
+    <h1 style="font-size:26px; font-weight:700; letter-spacing:-0.02em;">Real-time ad generator <span class="live-badge"><span class="live-dot"></span>LIVE AI</span></h1>
+    <p class="lead">Every click writes a brand-new video ad from scratch — Google Flow clip prompts, a voiceover script, ad copy, and one final ready-to-use prompt that bundles it all. Nothing is templated.</p>
+
+    <h2 class="step"><span class="n">1</span> Your business</h2>
+    <div class="field"><input id="biz" type="text" placeholder="e.g. Roofing business" /></div>
+    <div class="field"><input id="extra" type="text" placeholder="Optional — offer, location, or product detail" /></div>
+    <div class="durs" id="offertype" style="margin-top:4px;">
+      <button class="dur on" data-o="product">📦 I sell a Product</button>
+      <button class="dur" data-o="service">🛠 I offer a Service</button>
+    </div>
+
+    <h2 class="step"><span class="n">2</span> Visual style</h2>
+    <div class="seg chan" id="styl">
+      <button data-s="ugc"><div class="sf-t">📱 UGC</div><div class="sf-d">Authentic, phone-shot</div></button>
+      <button data-s="cinematic" class="on"><div class="sf-t">🎬 Cinematic</div><div class="sf-d">Polished, film-like</div></button>
+      <button data-s="product"><div class="sf-t">📦 Product showcase</div><div class="sf-d">Clean, studio look</div></button>
+      <button data-s="testimonial"><div class="sf-t">🗣 Testimonial</div><div class="sf-d">Talking-head, trust</div></button>
+    </div>
+
+    <h2 class="step"><span class="n">3</span> Pick an angle</h2>
+    <div class="angles" id="angles"></div>
+    <button class="ghost-btn" id="suggest">↻ Suggest angles tuned to my business (live)</button>
+
+    <h2 class="step"><span class="n">4</span> Aspect ratio</h2>
+    <div class="durs" id="ratios">
+      <button class="dur on" data-r="vertical">9:16 Vertical <span class="clip-step">Reels / TikTok / Stories</span></button>
+      <button class="dur" data-r="portrait">4:5 Portrait <span class="clip-step">Feed</span></button>
+      <button class="dur" data-r="square">1:1 Square <span class="clip-step">Feed</span></button>
+    </div>
+
+    <div id="durwrap">
+      <h2 class="step"><span class="n">5</span> Video length</h2>
+      <div class="durs" id="durs">
+        <button class="dur" data-d="8"><span class="badge">1 clip</span>8s</button>
+        <button class="dur on" data-d="15"><span class="badge">recommended</span>15s</button>
+        <button class="dur" data-d="20">20s</button>
+        <button class="dur" data-d="30">30s</button>
+      </div>
+      <p class="dur-note" id="durnote"></p>
+
+      <h2 class="step"><span class="n">6</span> Voiceover <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— for the script</span></h2>
+      <div class="vfield">
+        <label class="vlbl">Voice</label>
+        <div class="durs" id="vgender">
+          <button class="dur on" data-g="any">Any</button>
+          <button class="dur" data-g="male">Male</button>
+          <button class="dur" data-g="female">Female</button>
+        </div>
+      </div>
+      <div class="vrow">
+        <div class="field"><input id="vnat" type="text" placeholder="Accent / nationality — e.g. American, British, Filipino" /></div>
+        <div class="field"><input id="vlang" type="text" placeholder="Language — e.g. English, Tagalog, Spanish" /></div>
+      </div>
+      <div class="field"><input id="vtone" type="text" placeholder="Tone — e.g. warm, energetic, calm, authoritative" /></div>
+    </div>
+
+    <h2 class="step"><span class="n" id="itemnum">7</span> References <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional, up to 2</span></h2>
+    <div class="field"><input id="item" type="text" placeholder="Optional note (e.g. 'finished charcoal metal roof'). Or just upload below." /></div>
+
+    <label class="vlbl" id="lbl1" style="margin-top:6px;">Reference 1 — your Product</label>
+    <label class="uploader" id="uploader1">
+      <input type="file" id="imgfile1" accept="image/png,image/jpeg,image/webp" hidden />
+      <span id="uploadlabel1">📎 Upload the product / service image — kept exact</span>
+    </label>
+    <div id="imgpreview1" class="imgprev" style="display:none;"></div>
+
+    <label class="vlbl" style="margin-top:12px;">Reference 2 — Setting / Model</label>
+    <label class="uploader" id="uploader2">
+      <input type="file" id="imgfile2" accept="image/png,image/jpeg,image/webp" hidden />
+      <span id="uploadlabel2">📎 Upload the setting / model / vibe image</span>
+    </label>
+    <div id="imgpreview2" class="imgprev" style="display:none;"></div>
+    <p class="dur-note" style="margin-top:8px;">Uploading lets AdSpark describe your real product accurately. You'll still attach the same image yourself in Flow or ChatGPT.</p>
+
+    <button class="gen" id="gen">Generate fresh ad</button>
+    <div id="errbox"></div>
+
+    <div class="out-wrap" id="outwrap">
+      <div id="flowintro" class="cp-card" style="margin-bottom:18px; background:var(--spark-soft); border-color:var(--spark);">
+        <div style="font-family:'Sora';font-weight:600;font-size:14px;color:var(--txt);margin-bottom:4px;">Your ad, in 3 steps</div>
+        <div style="font-size:12.5px;color:var(--txt-dim);line-height:1.6;">Step 1 — make the hero frame image · Step 2 — animate it into clips in Google Flow · Step 3 — add the voiceover script. Ad copy is below for your post.</div>
+      </div>
+
+      <div id="framezone" style="display:none; margin-bottom:8px;">
+        <h2 class="step"><span class="n">1</span> Hero frame <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— make this still image first</span></h2>
+        <div class="cp-card" style="border-color:var(--spark);">
+          <div class="cp-head">
+            <span class="cp-lbl"><span class="ci" style="color:var(--spark)">🖼</span> Hero frame prompt</span>
+            <button class="copy-btn" id="copyframe">⧉ Copy</button>
+          </div>
+          <div class="clip-body" id="framebody"></div>
+          <p class="footer-note" style="margin-top:12px;">💡 Generate this as an image first (ChatGPT, Midjourney, etc.) with your reference attached — image tools keep products and faces far more exact than video. Then take that finished image into Step 2.</p>
+        </div>
+      </div>
+
+      <h2 class="step" style="margin-top:30px;"><span class="n">2</span> Animate <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— clip prompts for Google Flow</span></h2>
+      <div class="out-head"><h3 id="outtitle" style="font-size:13px;color:var(--txt-mute);font-weight:500;">Video prompts</h3></div>
+      <div id="visualzone"></div>
+      <p class="footer-note" id="footernote"></p>
+
+      <div id="scriptzone" style="display:none;">
+        <h2 class="step" style="margin-top:34px;"><span class="n">3</span> Voiceover script <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— natural spoken lines, one per clip</span></h2>
+        <div id="speakertag"></div>
+        <div class="cp-card">
+          <div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Full script</span><button class="mini-copy" id="copyscript">⧉ Copy all</button></div>
+          <div id="scriptlist"></div>
+        </div>
+      </div>
+
+      <h2 class="step" style="margin-top:34px;"><span class="n">✎</span> Ad copy <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— headline + post text for your caption</span></h2>
+      <div class="copy-grid">
+        <div class="cp-card"><div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Headline</span><button class="mini-copy" data-c="headline">⧉ Copy</button></div><div class="cp-headline" id="cp-headline"></div><div class="cp-alt"><div class="al">Alternate</div><div class="av" id="cp-headline-alt"></div></div></div>
+        <div class="cp-card"><div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Primary text</span><button class="mini-copy" data-c="body">⧉ Copy</button></div><div class="cp-body" id="cp-body"></div></div>
+        <div class="cp-card"><div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Call to action</span><button class="mini-copy" data-c="cta">⧉ Copy</button></div><span class="cp-cta" id="cp-cta"></span></div>
+      </div>
+      <button class="regen" id="regen">↻ Generate a different version (live)</button>
+
+      <div id="finalzone" style="display:none;">
+        <h2 class="step" style="margin-top:38px;"><span class="n">★</span> Complete Clip Prompts <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— video + voiceover + voice direction, per clip</span></h2>
+        <div id="lockzone" style="display:none;">
+          <div class="cp-card" style="margin-bottom:14px;">
+            <div class="cp-head"><span class="cp-lbl"><span class="ci">🔒</span> Locked subject <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— repeated in every clip to stay consistent</span></span><button class="mini-copy" id="copylock">⧉ Copy</button></div>
+            <div class="cp-body" id="lockbody"></div>
+          </div>
+        </div>
+        <p class="footer-note" style="margin-bottom:10px;">Each clip below is the full package — paste it into Google Flow, generate, then Extend for the next:</p>
+        <div id="finalclips"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>const ANGLES = [
+  {ic:'⚠️', t:'Hidden damage', d:'Small problems become expensive later'},
+  {ic:'🛡', t:'Trust + warranty', d:'Licensed, insured, guaranteed work'},
+  {ic:'⏱', t:'Urgency / season', d:'Act before the busy season hits'},
+  {ic:'🏷', t:'Limited offer', d:'A discount or free first step'},
+  {ic:'✨', t:'Before / after', d:'Visible proof of a transformation'}
+];
+const DUR_NOTE = {
+  '8':'8s = one Google Flow clip, no chaining. Veo\u2019s native length and the cleanest single take. Cheapest on free credits.',
+  '15':'15s = 2 chained clips (8s + 8s). Flow caps each generation at 8s, so AdSpark splits this into 2 segments you join with Extend. The paid-social sweet spot.',
+  '20':'20s = 3 chained clips. Flow generates 8s at a time; you\u2019ll render 3 segments and chain them. Room for problem \u2192 solution \u2192 CTA.',
+  '30':'30s = 4 chained clips. A full mini-story across 4 segments. Uses more daily credits \u2014 plan around your free 50/day.'
+};
+let state = { fmt:'video', dur:'15', angleIdx:null, angleText:'', style:'cinematic', ratio:'vertical', vgender:'any', offerType:'product' };
+const STYLE_LABEL = { ugc:'UGC', cinematic:'Cinematic', product:'Product showcase', testimonial:'Testimonial' };
+const RATIO_LABEL = { vertical:'9:16 Vertical', portrait:'4:5 Portrait', square:'1:1 Square' };
+
+function renderAngles(){
+  const c=document.getElementById('angles'); c.innerHTML='';
+  ANGLES.forEach((a,i)=>{
+    const el=document.createElement('div');
+    el.className='ang'+(state.angleIdx===i?' on':'');
+    el.innerHTML='<span class="ic">'+a.ic+'</span><div><div class="at">'+a.t+'</div><div class="ad">'+a.d+'</div></div>';
+    el.onclick=()=>{ state.angleIdx=i; state.angleText=a.t+' \u2014 '+a.d; renderAngles(); };
+    c.appendChild(el);
+  });
+}
+renderAngles();
+
+document.querySelectorAll('#styl button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#styl button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.style=b.dataset.s;
+  };
+});
+document.querySelectorAll('#ratios button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#ratios button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.ratio=b.dataset.r;
+  };
+});
+document.querySelectorAll('#vgender button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#vgender button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.vgender=b.dataset.g;
+  };
+});
+
+function setDurNote(){ document.getElementById('durnote').textContent=DUR_NOTE[state.dur]; }
+document.querySelectorAll('#durs .dur').forEach(b=>{
+  b.onclick=()=>{ document.querySelectorAll('#durs .dur').forEach(x=>x.classList.remove('on')); b.classList.add('on'); state.dur=b.dataset.d; setDurNote(); };
+});
+setDurNote();
+
+// Offer type toggle (product / service) — updates Reference 1 label
+let uploadedProduct=null, uploadedSetting=null;
+document.querySelectorAll('#offertype button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#offertype button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); state.offerType=b.dataset.o;
+    const isSvc = state.offerType==='service';
+    document.getElementById('lbl1').textContent = isSvc ? 'Reference 1 — your Service / its result' : 'Reference 1 — your Product';
+    if(!uploadedProduct){
+      document.getElementById('uploadlabel1').textContent = isSvc
+        ? '📎 Upload an image of the service / result — kept accurate'
+        : '📎 Upload the product image — kept exact';
     }
   };
-  const st = STYLES[style] || STYLES.cinematic;
+});
 
-  // Aspect ratio chosen by the user (vertical for reels/tiktok, square/portrait for feed).
-  const RATIOS = { vertical: '9:16 vertical', portrait: '4:5 portrait', square: '1:1 square' };
-  const aspect = RATIOS[ratio] || (isVideo ? '9:16 vertical' : '1:1 square');
+// Reusable image uploader
+function wireUploader(fileId, uploaderId, labelId, prevId, defaultLabel, setVal){
+  document.getElementById(fileId).addEventListener('change', function(){
+    const f=this.files && this.files[0];
+    if(!f) return;
+    if(f.size > 4*1024*1024){ showErr('Image is too large (max 4MB). Try a smaller one.'); this.value=''; return; }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const dataUrl=reader.result;
+      const base64=String(dataUrl).split(',')[1];
+      setVal({ data:base64, media_type:f.type });
+      document.getElementById(uploaderId).classList.add('has');
+      document.getElementById(labelId).textContent='📎 '+f.name+' — attached';
+      const pv=document.getElementById(prevId);
+      pv.style.display='flex'; pv.innerHTML='';
+      const img=document.createElement('img'); img.src=dataUrl; pv.appendChild(img);
+      const rm=document.createElement('button'); rm.className='rm'; rm.textContent='Remove';
+      rm.onclick=()=>{ setVal(null); document.getElementById(fileId).value=''; pv.style.display='none'; pv.innerHTML=''; document.getElementById(uploaderId).classList.remove('has'); document.getElementById(labelId).textContent=defaultLabel(); };
+      pv.appendChild(rm);
+    };
+    reader.readAsDataURL(f);
+  });
+}
+wireUploader('imgfile1','uploader1','uploadlabel1','imgpreview1',
+  ()=> state.offerType==='service' ? '📎 Upload an image of the service / result — kept accurate' : '📎 Upload the product image — kept exact',
+  (val)=>{ uploadedProduct=val; });
+wireUploader('imgfile2','uploader2','uploadlabel2','imgpreview2',
+  ()=> '📎 Upload the setting / model / vibe image',
+  (val)=>{ uploadedSetting=val; });
 
-  // Quality directives applied to every clip, incorporating the user's proven Flow directive.
-  const QUALITY = `RENDERING QUALITY (critical): ultra-realistic and convincing, photorealistic high detail, sharp focus, cinematic lighting, lifelike realistic skin texture and natural skin tones, professional camera work. PERFORMANCE: if a person is on camera, natural and energetic hand gestures and body language, believable expressions, a selling and persuasive energy without looking staged. IDENTITY: if a reference face is used, do NOT alter the face — keep it the same person. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; well-composed (centered or rule-of-thirds). Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`;
+let lastResult=null;
 
-  const hasProductImg = !!(productImage && productImage.data && productImage.media_type);
-  const hasSettingImg = !!(settingImage && settingImage.data && settingImage.media_type);
-  const hasAnyImg = hasProductImg || hasSettingImg;
-
-  // Offer-type-aware locking. Physical product = strict exact-appearance lock.
-  // Service = lock the accurate look of the work/result and depict it realistically.
-  const lockInstruction = isService
-    ? `
-SERVICE ACCURACY & LOCKING (critical):
-Build a precise "LOCK SHEET" describing the exact look of the SERVICE / its result and any people, so they stay identical across every clip.
-- Lock the accurate appearance of the work or result (e.g. for roofing: roof type, material, color, seam style, condition) — depict the service truthfully and professionally, never misleading.
-- If a worker or customer appears: lock age range, gender, ethnicity/skin tone, hair, build, and exact clothing/uniform.
-- Lock the setting details that define the scene.
-This LOCK SHEET must be embedded verbatim into EVERY clip so the same look repeats identically. Consistency comes from repeating the same precise description, never paraphrasing differently between clips.`
-    : `
-PRODUCT ACCURACY & LOCKING (critical):
-Build a precise "LOCK SHEET" — an exact, reusable description of the PRODUCT (and any on-camera person) so it stays identical across every clip.
-- Lock the product's exact type, shape, proportions, color(s), materials, texture, finish, packaging, logo, label, printed text, buttons, components, and every distinguishing detail.
-- Do NOT redesign, replace, simplify, stylize, or swap the product for a generic look-alike. Do not add features not present; do not remove real ones. The product must remain immediately recognizable as the exact same item.
-- If a person appears: lock age range, gender, ethnicity/skin tone, hair, build, and exact clothing.
-This LOCK SHEET must be embedded verbatim into EVERY clip so the same product/person repeats identically. Consistency comes from repeating the same precise description, never paraphrasing differently between clips.`;
-
-  // Reference-role guidance (dual image support).
-  let refUsage = '';
-  if (hasProductImg && hasSettingImg) {
-    refUsage = `\nTWO REFERENCE IMAGES are provided. Image 1 = the ${offerWord.toUpperCase()} (use as the exact reference for the ${offerWord} / its appearance or result). Image 2 = the SETTING / MODEL (use as the reference for environment, person, pose, layout, angle, composition, and overall creative concept). Combine the important elements of both into the clips. Study both images carefully and describe what you actually see.`;
-  } else if (hasProductImg) {
-    refUsage = `\nA reference image of the ${offerWord.toUpperCase()} is provided. Use it as the exact reference for the ${offerWord}'s appearance/result. Study it carefully and describe what you actually see.`;
-  } else if (hasSettingImg) {
-    refUsage = `\nA reference image of the SETTING / MODEL is provided. Use it as the reference for environment, person, pose, layout, and creative concept. Study it carefully and describe what you actually see.`;
+async function callAPI(){
+  const business=document.getElementById('biz').value.trim();
+  if(!business){ showErr('Enter your business first.'); return null; }
+  const detail=document.getElementById('extra').value.trim();
+  const angle=state.angleText||(ANGLES[0].t+' \u2014 '+ANGLES[0].d);
+  const item=document.getElementById('item').value.trim();
+  const voice = {
+    gender: state.vgender,
+    nationality: document.getElementById('vnat').value.trim(),
+    language: document.getElementById('vlang').value.trim(),
+    tone: document.getElementById('vtone').value.trim()
+  };
+  const payload={ business, detail, angle, duration:state.dur, item, style:state.style, ratio:state.ratio, voice, offerType:state.offerType, productImage: uploadedProduct, settingImage: uploadedSetting };
+  const r=await fetch('/api/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  if(!r.ok){
+    let msg='Generation failed.';
+    try{ const j=await r.json(); msg=j.error||msg; }catch{}
+    throw new Error(msg);
   }
-
-  const itemLine = hasAnyImg
-    ? `The user has UPLOADED reference image(s) (provided in this message).${refUsage} The user will attach the same image(s) in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}${lockInstruction}`
-    : item
-      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". Treat it as the real hero subject; do not invent a different ${offerWord}.${lockInstruction}`
-      : `No reference will be attached; invent a photoreal, on-brand subject. Still create a LOCK SHEET describing your chosen subject precisely, and repeat it in every clip.${lockInstruction}`;
-
-  // Hard negative constraints applied to every clip (the "do not" contract).
-  const negativeConstraints = `NEGATIVE CONSTRAINTS (every clip must avoid these): no watermarks, no random or fake logos, no incorrect labels, no gibberish or misspelled text, no duplicated objects, no distorted or extra hands/fingers, no deformed or warped faces, no morphing of the ${offerWord} between clips, no unrealistic proportions, no collage or split-screen, no on-screen text baked into the video. Prioritize exact reference accuracy over creative reinterpretation.`;
-
-  // Google Flow / Veo caps each generation at 8 seconds. Longer ads are built by
-  // chaining multiple 8s clips with the Extend feature. So we break the ad into beats.
-  const segCount = isVideo ? Math.max(1, Math.ceil(parseInt(duration, 10) / 8)) : 0;
-  const isMultiSeg = segCount > 1;
-
-  const durationGuide = isVideo
-    ? (isMultiSeg
-        ? `This is a ${duration}-second ${aspect} video ad in ${st.name} style.
-IMPORTANT: Google Flow (Veo) generates a MAXIMUM of 8 seconds per clip. To reach ${duration}s, the user generates ${segCount} separate 8-second clips and chains them with Flow's "Extend" feature.
-Break the video into exactly ${segCount} self-contained 8-second clips that connect visually. Carry the same subject, lighting, and style across all clips so they match when stitched.`
-        : `This is an 8-second ${aspect} video ad in ${st.name} style — a single Google Flow (Veo) generation, no chaining needed.`)
-    : `This is a single still image, ${aspect}, in ${st.name} style, with clear negative space reserved for a headline overlay.`;
-
-  // System prompt forces freshness and variety on every call.
-  const system = `You are a senior direct-response creative director and prompt engineer for AI image and video generators.
-You write fresh, original copy every single time — never reuse phrasings, never fall back on clichés like "Look no further" or "Say goodbye to".
-Match the specific ANGLE: an urgency angle must feel time-pressured; a trust angle credible; a proof angle must lean on visible results. Adapt all language to the actual business — never assume roofing unless told.
-You are an expert at writing AI-video prompts that produce realistic, well-framed, high-quality results with no cropped subjects, distorted faces, or warped hands. Always include explicit framing and quality direction.
-Write like a real human marketer: specific, vivid, varied. Return ONLY valid JSON, no markdown fences, no preamble.`;
-
-  const user = `Generate a complete ad package.
-
-BUSINESS: ${business}
-${detail ? `OFFER / CONTEXT: ${detail}` : ''}
-ANGLE: ${angle}
-VISUAL STYLE: ${st.name} — ${st.look}
-ASPECT RATIO: ${aspect}
-TOOL THAT WILL GENERATE THE VISUAL: ${genPlatform}
-${isVideo && voiceBrief ? `VOICEOVER DIRECTION: ${voiceBrief}` : ''}
-${personRule}
-${durationGuide}
-${itemLine}
-
-${QUALITY}
-
-Every visual prompt you write MUST embody the ${st.name} style above AND include the rendering-quality and framing direction. The aspect ratio (${aspect}) must be stated in each prompt.
-
-Return JSON with exactly these keys:
-{
-  "headline": "scroll-stopping primary headline, under 12 words",
-  "headlineAlt": "a distinctly different alternate headline",
-  "primaryText": "post body copy. ${st.copyNote}",
-  "cta": "a 2-4 word call-to-action button label",
-  ${isVideo
-    ? `"speaker": "a one-line description of the voiceover talent based on the VOICEOVER DIRECTION (e.g. 'American man, warm and confident'). If no direction given, choose a fitting default.",
-  "lockSheet": "the precise LOCK SHEET — an exact physical description of the key subject(s) (person and/or product) that is embedded identically into every clip for consistency. 2-5 sentences.",
-  "framePrompt": "a complete, structured IMAGE prompt for generating the HERO FIRST FRAME as a still (to be used as the image-to-video input in Flow). Follow this exact sectioned format with these headers: REFERENCE USAGE, ${isService ? 'SERVICE ACCURACY' : 'CRITICAL PRODUCT ACCURACY'}, IMAGE STYLE, COMPOSITION, CREATIVE DIRECTION (with Product/Service, Target audience, Setting, Main selling point, Desired emotion, Image format ${aspect}, Visual angle), TEXT IN THE IMAGE: None, and FINAL REQUIREMENTS (the negative constraints). It must embed the lock sheet, match the ${st.name} style, and reflect the references. This is a self-contained prompt the user pastes into an image generator.",
-  "clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount} (must contain the lock sheet description)"`).join(', ')} ],
-  "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line spoken during clip ${i+1}"`).join(', ')} ]`
-    : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform} in ${st.name} style. Include shot type, composition, lighting, mood, the aspect ratio (${aspect}), the rendering-quality and framing direction above, and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
+  return await r.json();
 }
 
-${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
-- Return exactly ${segCount} clip${segCount>1?'s':''}.
-- Each array item is the COMPLETE, copy-paste-ready prompt for ONE 8-second Google Flow generation — and NOTHING else.
-- Do NOT include labels like "CLIP 1", timecodes, the word "Extend", or any meta-instructions inside the clip text. The user pastes each item directly into Flow exactly as written.
-- Each clip describes only its own ~8 seconds: the action, camera motion, lighting, audio, AND explicit framing + quality direction so subjects are fully in frame and photorealistic.
-- Embody the ${st.name} visual style in every clip.
-- State the ${aspect} aspect ratio in each clip.
-- Keep subject, wardrobe, palette, lighting, and style consistent across all clips so they stitch seamlessly (describe the same people the same way each time).
-- REFERENCE CONSISTENCY: embed the LOCK SHEET description of the key subject (${offerWord} and/or person) into EVERY clip, word-for-word the same, so the subject does not change appearance between clips. This is the most important rule for a reference-based ad.
-- ${negativeConstraints}
-- Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
-${personBits ? `- WHENEVER a human appears on camera in a clip, that person must be a ${personBits} individual (matching the voiceover talent), described consistently across clips. Skip this for clips that show only product, scenery, or B-roll with no person.` : ''}
+function showErr(m){ document.getElementById('errbox').innerHTML='<div class="err">'+m+'</div>'; }
+function clearErr(){ document.getElementById('errbox').innerHTML=''; }
 
-RULES FOR THE "script" ARRAY (write these so they sound like a REAL PERSON SPEAKING, not written ad copy):
-- Exactly ${segCount} entr${segCount>1?'ies':'y'}, one per clip, in order.
-- Each is ONLY the spoken VOICEOVER words for that ~8-second clip — short enough to say naturally in 8 seconds (roughly 12-20 words).
-- CRITICAL — NATURAL SPEECH: Write how a real person actually TALKS out loud, casual and conversational. NOT slogans, NOT a list of adjectives, NOT marketing taglines. Avoid slogan-style phrasing like "walang ito, walang iyon" or "no this, no that". Use everyday spoken rhythm, contractions, and the way real people phrase things in casual conversation.
-- ${voiceBrief ? `Suit the voiceover direction (${voiceBrief}).` : 'Use a natural, friendly speaker.'}
-- LANGUAGE: ${(v.language && v.language.toLowerCase() !== 'english') ? `Write the lines in ${v.language}, using NATURAL, NATIVE, EVERYDAY SPOKEN ${v.language} — the way a real native speaker casually talks, including natural code-switching or common everyday words if that's how people genuinely speak. Do NOT write stiff, formal, or textbook ${v.language}, and do NOT write translated-sounding ad copy. It must sound like a real ${v.language} speaker talking to a friend.` : 'Write in natural, casual, everyday spoken English — the way a real person talks, not formal or salesy.'}
-- Together they flow as ONE natural spoken message: a hook that grabs attention, then the point, then a casual nudge to act at the end. Make it feel like one person talking through the whole ad, not separate slogans.
-- Just the spoken words — no speaker labels, no stage directions inside the line.` : ''}
-
-Make this generation genuinely unique — imagine you've never written about this business before.`;
-
-  // Build the message content. Include whichever reference image(s) were uploaded.
-  let userContent;
-  if (hasAnyImg) {
-    const parts = [];
-    if (hasProductImg) {
-      parts.push({ type: 'text', text: `Reference Image 1 — the ${offerWord.toUpperCase()}:` });
-      parts.push({ type: 'image', source: { type: 'base64', media_type: productImage.media_type, data: productImage.data } });
-    }
-    if (hasSettingImg) {
-      parts.push({ type: 'text', text: `Reference Image 2 — the SETTING / MODEL:` });
-      parts.push({ type: 'image', source: { type: 'base64', media_type: settingImage.media_type, data: settingImage.data } });
-    }
-    parts.push({ type: 'text', text: user });
-    userContent = parts;
-  } else {
-    userContent = user;
-  }
-
-  try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 3000,
-        temperature: 1, // high temperature = more variety between generations
-        system,
-        messages: [{ role: 'user', content: userContent }]
-      })
+function attachCopy(btn, getText){
+  btn.onclick=()=>{
+    navigator.clipboard.writeText(getText()).then(()=>{
+      const o=btn.innerHTML; btn.innerHTML='\u2713 Copied'; btn.classList.add('done');
+      setTimeout(()=>{ btn.innerHTML=o; btn.classList.remove('done'); },1500);
     });
-
-    if (!r.ok) {
-      const errText = await r.text();
-      return res.status(502).json({ error: 'AI request failed', detail: errText.slice(0, 300) });
-    }
-
-    const data = await r.json();
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
-    const clean = text.replace(/^```json\s*/i, '').replace(/```$/,'').trim();
-
-    let parsed;
-    try { parsed = JSON.parse(clean); }
-    catch { return res.status(502).json({ error: 'Could not parse AI response', raw: clean.slice(0, 400) }); }
-
-    // Normalize output so the frontend always gets a predictable shape.
-    if (isVideo) {
-      let clips = parsed.clips;
-      if (!Array.isArray(clips)) {
-        // Fallbacks if the model returned a string instead of an array.
-        if (typeof parsed.visualPrompt === 'string') clips = [parsed.visualPrompt];
-        else if (typeof clips === 'string') clips = [clips];
-        else clips = [];
-      }
-      // Strip any stray "CLIP n" labels or leading timecodes the model may have added.
-      clips = clips.map(c => String(c)
-        .replace(/^\s*clip\s*\d+\s*[:\-–(]?[^\n]*?\)?\s*/i, '')
-        .replace(/^\s*\(?\d+\s*[-–]\s*\d+\s*s\)?\s*[:\-–]?\s*/i, '')
-        .trim());
-      parsed.clips = clips;
-
-      // Normalize the voiceover script into an array aligned with the clips.
-      let script = parsed.script;
-      if (!Array.isArray(script)) script = (typeof script === 'string' && script) ? [script] : [];
-      // Strip stray "Clip n:" prefixes from script lines too.
-      script = script.map(s => String(s).replace(/^\s*clip\s*\d+\s*[:\-–]\s*/i, '').trim());
-      parsed.script = script;
-
-      delete parsed.visualPrompt;
-      parsed.speaker = parsed.speaker || '';
-      parsed.lockSheet = parsed.lockSheet || '';
-      parsed.framePrompt = parsed.framePrompt || '';
-
-      // ---- Build the consolidated FINAL PROMPTS ----
-      // Voice/speaker line shown in the bundle.
-      const voiceLine = [
-        parsed.speaker ? parsed.speaker : '',
-        v.tone ? `tone: ${v.tone}` : '',
-        (v.language && v.language.toLowerCase() !== 'english') ? `language: ${v.language}` : ''
-      ].filter(Boolean).join(' · ');
-
-      const imgCount = (hasProductImg?1:0) + (hasSettingImg?1:0);
-      const refLine = imgCount > 0
-        ? `REFERENCE IMAGE${imgCount>1?'S':''}: attach your uploaded reference image${imgCount>1?'s (the '+offerWord+' and the setting/model)':''} in Google Flow before generating — the result should match ${imgCount>1?'them':'it'}.`
-        : '';
-
-      const styName = (style || 'cinematic');
-      // Per-clip final prompt: everything needed to make and narrate that one clip.
-      parsed.finalClips = clips.map((clip, i) => {
-        const vo = script[i] || '';
-        return [
-          `=== CLIP ${i+1} of ${clips.length} — ${aspect} ===`,
-          ``,
-          `VIDEO PROMPT (paste into Google Flow):`,
-          clip,
-          ``,
-          vo ? `VOICEOVER${voiceLine ? ` (${voiceLine})` : ''}:` : '',
-          vo ? `"${vo}"` : '',
-          refLine ? `` : '',
-          refLine
-        ].filter(l => l !== '').join('\n');
-      });
-    }
-    parsed.style = style || 'cinematic';
-    parsed.ratio = ratio || 'vertical';
-    parsed.voice = v;
-    parsed.usedImage = hasProductImg || hasSettingImg;
-    parsed.offerType = isService ? 'service' : 'product';
-
-    return res.status(200).json(parsed);
-  } catch (e) {
-    return res.status(500).json({ error: 'Unexpected error', detail: String(e).slice(0, 200) });
-  }
+  };
 }
+
+function fillOutput(c){
+  lastResult=c;
+  const styName = STYLE_LABEL[c.style||state.style] || 'Cinematic';
+  const ratName = RATIO_LABEL[c.ratio||state.ratio] || '9:16 Vertical';
+  const tag = styName+' \u00b7 '+ratName;
+  const zone=document.getElementById('visualzone');
+  zone.innerHTML='';
+  const scriptzone=document.getElementById('scriptzone');
+
+  // Hero frame prompt (image-first path)
+  const framezone=document.getElementById('framezone');
+  if(c.framePrompt){
+    document.getElementById('framebody').textContent=c.framePrompt;
+    framezone.style.display='block';
+  } else {
+    framezone.style.display='none';
+  }
+
+  const clips = Array.isArray(c.clips) ? c.clips : (c.visualPrompt? [c.visualPrompt] : []);
+  document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+tag+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
+  clips.forEach((clip,i)=>{
+    const card=document.createElement('div'); card.className='clip-card';
+    const head=document.createElement('div'); head.className='clip-head';
+    const stepLabel = i===0 ? 'Generate first' : 'Then tap Extend, paste this';
+    head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Clip '+(i+1)+' <span class="clip-step">'+stepLabel+'</span></span>';
+    const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy clip '+(i+1);
+    head.appendChild(cbtn); card.appendChild(head);
+    const body=document.createElement('div'); body.className='clip-body'; body.textContent=clip;
+    card.appendChild(body); zone.appendChild(card);
+    attachCopy(cbtn, ()=>clip);
+    if(i<clips.length-1){
+      const ext=document.createElement('div'); ext.className='clip-extend'; ext.textContent='\u2193 use Flow\u2019s Extend, then paste the next clip \u2193';
+      zone.appendChild(ext);
+    }
+  });
+  const fn=document.getElementById('footernote');
+  fn.innerHTML = clips.length>1
+    ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. '+styName+' style, '+ratName+'.'
+    : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. '+styName+' style, '+ratName+'.';
+
+  // Voiceover script
+  const script = Array.isArray(c.script) ? c.script : [];
+  const list=document.getElementById('scriptlist');
+  const stag=document.getElementById('speakertag');
+  list.innerHTML='';
+  if(script.length){
+    stag.innerHTML = c.speaker ? '<span class="speaker-tag">🎙 '+c.speaker.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>' : '';
+    script.forEach((line,i)=>{
+      const row=document.createElement('div'); row.className='scr-line';
+      row.innerHTML='<span class="scr-num">'+(i+1)+'</span><span class="scr-txt">'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
+      list.appendChild(row);
+    });
+    scriptzone.style.display='block';
+  } else {
+    scriptzone.style.display='none';
+  }
+
+  // Complete per-clip prompts
+  const fz=document.getElementById('finalzone');
+  const fclips = Array.isArray(c.finalClips) ? c.finalClips : [];
+  // Lock sheet
+  const lockzone=document.getElementById('lockzone');
+  if(c.lockSheet){
+    document.getElementById('lockbody').textContent=c.lockSheet;
+    lockzone.style.display='block';
+  } else {
+    lockzone.style.display='none';
+  }
+  if(fclips.length){
+    const fc=document.getElementById('finalclips'); fc.innerHTML='';
+    fclips.forEach((fcText,i)=>{
+      const card=document.createElement('div'); card.className='clip-card';
+      const head=document.createElement('div'); head.className='clip-head';
+      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Complete Clip '+(i+1)+'</span>';
+      const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy';
+      head.appendChild(cbtn); card.appendChild(head);
+      const body=document.createElement('div'); body.className='clip-body'; body.textContent=fcText;
+      card.appendChild(body); fc.appendChild(card);
+      attachCopy(cbtn, ()=>fcText);
+    });
+    fz.style.display='block';
+  } else {
+    fz.style.display='none';
+  }
+
+  document.getElementById('cp-headline').textContent=c.headline||'';
+  document.getElementById('cp-headline-alt').textContent=c.headlineAlt||'';
+  document.getElementById('cp-body').textContent=c.primaryText||'';
+  document.getElementById('cp-cta').textContent=c.cta||'';
+  document.getElementById('outwrap').style.display='block';
+}
+
+async function run(btn, label){
+  clearErr();
+  const orig=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>'+label;
+  try{
+    const c=await callAPI();
+    if(c){
+      fillOutput(c);
+      const biz=document.getElementById('biz').value.trim();
+      const h=loadHist();
+      h.unshift({biz, fmt:state.fmt, dur:state.dur, angle:(state.angleText||ANGLES[0].t).split(' \u2014 ')[0], result:c, ts:Date.now()});
+      saveHist(h); renderHist();
+      document.getElementById('outwrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+    }
+  }catch(e){ showErr(e.message+' If this keeps happening, check that the API key and billing are set up in Vercel.'); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
+}
+
+document.getElementById('gen').onclick=function(){ run(this,'Writing a fresh idea\u2026'); };
+document.getElementById('regen').onclick=function(){ run(this,'Generating another\u2026'); };
+
+document.getElementById('suggest').onclick=async function(){
+  const biz=document.getElementById('biz').value.trim();
+  if(!biz){ showErr('Enter your business first, then I can suggest angles.'); return; }
+  clearErr();
+  const orig=this.innerHTML; this.disabled=true; this.innerHTML='<span class="spinner"></span>Thinking of angles\u2026';
+  try{
+    const r=await fetch('/api/angles',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({business:biz}) });
+    if(!r.ok) throw new Error('Could not fetch angles.');
+    const j=await r.json();
+    if(j.angles && j.angles.length){
+      ANGLES.length=0;
+      j.angles.forEach(a=>ANGLES.push({ic:a.icon||'\u2728', t:a.title, d:a.description}));
+      state.angleIdx=null; state.angleText=''; renderAngles();
+    }
+  }catch(e){ showErr(e.message); }
+  finally{ this.disabled=false; this.innerHTML=orig; }
+};
+
+document.querySelectorAll('.mini-copy').forEach(btn=>{
+  btn.onclick=()=>{
+    const map={ headline:lastResult&&lastResult.headline, body:lastResult&&lastResult.primaryText, cta:lastResult&&lastResult.cta };
+    const txt=map[btn.dataset.c]||'';
+    navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent='\u2713 Copied'; btn.classList.add('done'); setTimeout(()=>{btn.textContent=o;btn.classList.remove('done');},1500); });
+  };
+});
+document.getElementById('copyscript').onclick=function(){
+  const s=(lastResult&&Array.isArray(lastResult.script))?lastResult.script:[];
+  if(!s.length) return;
+  const head=(lastResult&&lastResult.speaker)?(lastResult.speaker+':\n'):'';
+  const txt=head+s.map((l,i)=>'Clip '+(i+1)+': '+l).join('\n');
+  navigator.clipboard.writeText(txt).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy all';this.classList.remove('done');},1500); });
+};
+document.getElementById('copylock').onclick=function(){
+  const l=(lastResult&&lastResult.lockSheet)?lastResult.lockSheet:'';
+  if(!l) return;
+  navigator.clipboard.writeText(l).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy';this.classList.remove('done');},1500); });
+};
+document.getElementById('copyframe').onclick=function(){
+  const f=(lastResult&&lastResult.framePrompt)?lastResult.framePrompt:'';
+  if(!f) return;
+  navigator.clipboard.writeText(f).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy';this.classList.remove('done');},1500); });
+};
+
+const KEY='adspark_live_history_v1';
+function loadHist(){ try{return JSON.parse(localStorage.getItem(KEY))||[];}catch{return [];} }
+function saveHist(h){ try{localStorage.setItem(KEY,JSON.stringify(h.slice(0,25)));}catch{} }
+function renderHist(){
+  const h=loadHist(); const c=document.getElementById('history');
+  if(!h.length){ c.innerHTML='<div class="hist-empty">No saved prompts yet. Generate one and it\u2019ll appear here.</div>'; return; }
+  c.innerHTML='';
+  h.forEach(it=>{
+    const el=document.createElement('div'); el.className='hist-item';
+    const tag=it.fmt==='image'?'IMG':it.dur+'s';
+    el.innerHTML='<div class="ht">'+it.biz+' <span class="tag '+(it.fmt==='image'?'img':'vid')+'">'+tag+'</span></div><div class="hb">'+it.angle+'</div>';
+    el.onclick=()=>{ state.fmt=it.fmt; state.dur=it.dur; if(it.result){ if(it.result.style) state.style=it.result.style; if(it.result.ratio) state.ratio=it.result.ratio; } fillOutput(it.result); window.scrollTo({top:0,behavior:'smooth'}); };
+    c.appendChild(el);
+  });
+}
+renderHist();
+</script>
+</body>
+</html>
