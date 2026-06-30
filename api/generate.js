@@ -268,28 +268,6 @@ Make this generation genuinely unique — imagine you've never written about thi
           refLine
         ].filter(l => l !== '').join('\n');
       });
-
-      // Master final prompt: the whole ad in one block.
-      const masterParts = [];
-      masterParts.push(`AD PACKAGE — ${business}`);
-      masterParts.push(`Angle: ${angle}`);
-      masterParts.push(`Style: ${st.name} · Aspect: ${aspect} · ${clips.length} clip${clips.length>1?'s':''} (8s each, chain with Extend)`);
-      if (voiceLine) masterParts.push(`Voiceover talent: ${voiceLine}`);
-      if (parsed.lockSheet) masterParts.push(`Locked subject (keep identical every clip): ${parsed.lockSheet}`);
-      if (refLine) masterParts.push(refLine);
-      masterParts.push('');
-      clips.forEach((clip, i) => {
-        masterParts.push(`--- CLIP ${i+1} ---`);
-        masterParts.push(`VIDEO PROMPT: ${clip}`);
-        if (script[i]) masterParts.push(`VOICEOVER: "${script[i]}"`);
-        masterParts.push('');
-      });
-      masterParts.push(`AD COPY`);
-      masterParts.push(`Headline: ${parsed.headline || ''}`);
-      if (parsed.headlineAlt) masterParts.push(`Alt headline: ${parsed.headlineAlt}`);
-      if (parsed.primaryText) masterParts.push(`Primary text: ${parsed.primaryText}`);
-      masterParts.push(`CTA: ${parsed.cta || ''}`);
-      parsed.finalMaster = masterParts.join('\n');
     }
     parsed.style = style || 'cinematic';
     parsed.ratio = ratio || 'vertical';
