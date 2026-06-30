@@ -346,18 +346,14 @@
       <button class="regen" id="regen">↻ Generate a different version (live)</button>
 
       <div id="finalzone" style="display:none;">
-        <h2 class="step" style="margin-top:38px;"><span class="n">★</span> Final prompt <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— everything bundled, ready to use</span></h2>
+        <h2 class="step" style="margin-top:38px;"><span class="n">★</span> Complete Clip Prompts <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— video + voiceover + voice direction, per clip</span></h2>
         <div id="lockzone" style="display:none;">
           <div class="cp-card" style="margin-bottom:14px;">
             <div class="cp-head"><span class="cp-lbl"><span class="ci">🔒</span> Locked subject <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— repeated in every clip to stay consistent</span></span><button class="mini-copy" id="copylock">⧉ Copy</button></div>
             <div class="cp-body" id="lockbody"></div>
           </div>
         </div>
-        <div class="cp-card" style="border-color:var(--border-accent,var(--line-2));">
-          <div class="cp-head"><span class="cp-lbl"><span class="ci">★</span> Master prompt (whole ad)</span><button class="copy-btn" id="copymaster">⧉ Copy master</button></div>
-          <div class="clip-body" id="finalmaster"></div>
-        </div>
-        <p class="footer-note" style="margin-bottom:10px;">Or grab each clip individually — video prompt + voiceover + voice direction together:</p>
+        <p class="footer-note" style="margin-bottom:10px;">Each clip below is the full package — paste it into Google Flow, generate, then Extend for the next:</p>
         <div id="finalclips"></div>
       </div>
     </div>
@@ -525,9 +521,8 @@ function fillOutput(c){
     scriptzone.style.display='none';
   }
 
-  // Final prompts (master + per-clip)
+  // Complete per-clip prompts
   const fz=document.getElementById('finalzone');
-  const master = c.finalMaster || '';
   const fclips = Array.isArray(c.finalClips) ? c.finalClips : [];
   // Lock sheet
   const lockzone=document.getElementById('lockzone');
@@ -537,13 +532,12 @@ function fillOutput(c){
   } else {
     lockzone.style.display='none';
   }
-  if(master || fclips.length){
-    document.getElementById('finalmaster').textContent = master;
+  if(fclips.length){
     const fc=document.getElementById('finalclips'); fc.innerHTML='';
     fclips.forEach((fcText,i)=>{
       const card=document.createElement('div'); card.className='clip-card';
       const head=document.createElement('div'); head.className='clip-head';
-      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Final \u2014 Clip '+(i+1)+'</span>';
+      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Complete Clip '+(i+1)+'</span>';
       const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy';
       head.appendChild(cbtn); card.appendChild(head);
       const body=document.createElement('div'); body.className='clip-body'; body.textContent=fcText;
@@ -614,11 +608,6 @@ document.getElementById('copyscript').onclick=function(){
   const head=(lastResult&&lastResult.speaker)?(lastResult.speaker+':\n'):'';
   const txt=head+s.map((l,i)=>'Clip '+(i+1)+': '+l).join('\n');
   navigator.clipboard.writeText(txt).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy all';this.classList.remove('done');},1500); });
-};
-document.getElementById('copymaster').onclick=function(){
-  const m=(lastResult&&lastResult.finalMaster)?lastResult.finalMaster:'';
-  if(!m) return;
-  navigator.clipboard.writeText(m).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy master';this.classList.remove('done');},1500); });
 };
 document.getElementById('copylock').onclick=function(){
   const l=(lastResult&&lastResult.lockSheet)?lastResult.lockSheet:'';
