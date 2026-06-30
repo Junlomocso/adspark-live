@@ -27,8 +27,11 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ error: 'Invalid request body' }); }
 
-  const { business, detail, angle, duration, item, style, ratio, voice, image } = body || {};
+  const { business, detail, angle, duration, item, style, ratio, voice, offerType, productImage, settingImage } = body || {};
   if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
+
+  const isService = offerType === 'service';
+  const offerWord = isService ? 'service' : 'product';
 
   // AdSpark is video-only. Everything generates Google Flow (Veo) video prompts.
   const isVideo = true;
@@ -88,20 +91,46 @@ export default async function handler(req, res) {
     ? `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures, professional camera work. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; subjects well-composed and centered or rule-of-thirds. Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`
     : `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces or bodies awkwardly; leave headroom and margins; well-composed. Avoid distorted hands, extra limbs, or warped faces.`;
 
-  const hasImage = !!(image && image.data && image.media_type);
-  const lockInstruction = `
-REFERENCE LOCKING (critical for consistency):
-Build a precise "LOCK SHEET" — an exact, reusable physical description of the key subject(s) so they stay consistent across every clip and drift as little as possible.
-- If a PERSON is the subject: lock exact age range, gender, ethnicity/skin tone, hair (color, length, style), facial hair, distinctive features, build/height, and exact clothing (items, colors, fit). 
-- If a PRODUCT/ITEM is the subject: lock exact type, color(s), material, finish, shape, proportions, branding/markings, and any distinguishing details.
-- If both appear, lock both.
-This LOCK SHEET text must be embedded verbatim (or near-verbatim) into EVERY clip prompt, so the same person/product is described identically each time. Consistency comes from repeating the same precise description, never paraphrasing it differently between clips.`;
+  const hasProductImg = !!(productImage && productImage.data && productImage.media_type);
+  const hasSettingImg = !!(settingImage && settingImage.data && settingImage.media_type);
+  const hasAnyImg = hasProductImg || hasSettingImg;
 
-  const itemLine = hasImage
-    ? `The user has UPLOADED a reference image (provided in this message). Study it extremely carefully. The generated creative must match what you see — the real person/product, setting, colors, and style. Describe the ACTUAL subject from the image in precise detail; never invent a different one. The user will attach this same image in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}${lockInstruction}`
+  // Offer-type-aware locking. Physical product = strict exact-appearance lock.
+  // Service = lock the accurate look of the work/result and depict it realistically.
+  const lockInstruction = isService
+    ? `
+SERVICE ACCURACY & LOCKING (critical):
+Build a precise "LOCK SHEET" describing the exact look of the SERVICE / its result and any people, so they stay identical across every clip.
+- Lock the accurate appearance of the work or result (e.g. for roofing: roof type, material, color, seam style, condition) — depict the service truthfully and professionally, never misleading.
+- If a worker or customer appears: lock age range, gender, ethnicity/skin tone, hair, build, and exact clothing/uniform.
+- Lock the setting details that define the scene.
+This LOCK SHEET must be embedded verbatim into EVERY clip so the same look repeats identically. Consistency comes from repeating the same precise description, never paraphrasing differently between clips.`
+    : `
+PRODUCT ACCURACY & LOCKING (critical):
+Build a precise "LOCK SHEET" — an exact, reusable description of the PRODUCT (and any on-camera person) so it stays identical across every clip.
+- Lock the product's exact type, shape, proportions, color(s), materials, texture, finish, packaging, logo, label, printed text, buttons, components, and every distinguishing detail.
+- Do NOT redesign, replace, simplify, stylize, or swap the product for a generic look-alike. Do not add features not present; do not remove real ones. The product must remain immediately recognizable as the exact same item.
+- If a person appears: lock age range, gender, ethnicity/skin tone, hair, build, and exact clothing.
+This LOCK SHEET must be embedded verbatim into EVERY clip so the same product/person repeats identically. Consistency comes from repeating the same precise description, never paraphrasing differently between clips.`;
+
+  // Reference-role guidance (dual image support).
+  let refUsage = '';
+  if (hasProductImg && hasSettingImg) {
+    refUsage = `\nTWO REFERENCE IMAGES are provided. Image 1 = the ${offerWord.toUpperCase()} (use as the exact reference for the ${offerWord} / its appearance or result). Image 2 = the SETTING / MODEL (use as the reference for environment, person, pose, layout, angle, composition, and overall creative concept). Combine the important elements of both into the clips. Study both images carefully and describe what you actually see.`;
+  } else if (hasProductImg) {
+    refUsage = `\nA reference image of the ${offerWord.toUpperCase()} is provided. Use it as the exact reference for the ${offerWord}'s appearance/result. Study it carefully and describe what you actually see.`;
+  } else if (hasSettingImg) {
+    refUsage = `\nA reference image of the SETTING / MODEL is provided. Use it as the reference for environment, person, pose, layout, and creative concept. Study it carefully and describe what you actually see.`;
+  }
+
+  const itemLine = hasAnyImg
+    ? `The user has UPLOADED reference image(s) (provided in this message).${refUsage} The user will attach the same image(s) in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}${lockInstruction}`
     : item
-      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". Treat it as the real hero subject; do not invent a different product.${lockInstruction}`
-      : `No reference will be attached; invent a photoreal, on-brand subject. Still create a LOCK SHEET describing your chosen subject precisely, and repeat it in every clip so it stays consistent across clips.${lockInstruction}`;
+      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". Treat it as the real hero subject; do not invent a different ${offerWord}.${lockInstruction}`
+      : `No reference will be attached; invent a photoreal, on-brand subject. Still create a LOCK SHEET describing your chosen subject precisely, and repeat it in every clip.${lockInstruction}`;
+
+  // Hard negative constraints applied to every clip (the "do not" contract).
+  const negativeConstraints = `NEGATIVE CONSTRAINTS (every clip must avoid these): no watermarks, no random or fake logos, no incorrect labels, no gibberish or misspelled text, no duplicated objects, no distorted or extra hands/fingers, no deformed or warped faces, no morphing of the ${offerWord} between clips, no unrealistic proportions, no collage or split-screen, no on-screen text baked into the video. Prioritize exact reference accuracy over creative reinterpretation.`;
 
   // Google Flow / Veo caps each generation at 8 seconds. Longer ads are built by
   // chaining multiple 8s clips with the Extend feature. So we break the ad into beats.
@@ -149,6 +178,7 @@ Return JSON with exactly these keys:
   ${isVideo
     ? `"speaker": "a one-line description of the voiceover talent based on the VOICEOVER DIRECTION (e.g. 'American man, warm and confident'). If no direction given, choose a fitting default.",
   "lockSheet": "the precise LOCK SHEET — an exact physical description of the key subject(s) (person and/or product) that is embedded identically into every clip for consistency. 2-5 sentences.",
+  "framePrompt": "a complete, structured IMAGE prompt for generating the HERO FIRST FRAME as a still (to be used as the image-to-video input in Flow). Follow this exact sectioned format with these headers: REFERENCE USAGE, ${isService ? 'SERVICE ACCURACY' : 'CRITICAL PRODUCT ACCURACY'}, IMAGE STYLE, COMPOSITION, CREATIVE DIRECTION (with Product/Service, Target audience, Setting, Main selling point, Desired emotion, Image format ${aspect}, Visual angle), TEXT IN THE IMAGE: None, and FINAL REQUIREMENTS (the negative constraints). It must embed the lock sheet, match the ${st.name} style, and reflect the references. This is a self-contained prompt the user pastes into an image generator.",
   "clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount} (must contain the lock sheet description)"`).join(', ')} ],
   "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line spoken during clip ${i+1}"`).join(', ')} ]`
     : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform} in ${st.name} style. Include shot type, composition, lighting, mood, the aspect ratio (${aspect}), the rendering-quality and framing direction above, and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
@@ -162,7 +192,8 @@ ${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
 - Embody the ${st.name} visual style in every clip.
 - State the ${aspect} aspect ratio in each clip.
 - Keep subject, wardrobe, palette, lighting, and style consistent across all clips so they stitch seamlessly (describe the same people the same way each time).
-- REFERENCE CONSISTENCY: embed the LOCK SHEET description of the key subject (person and/or product) into EVERY clip, word-for-word the same, so the subject does not change appearance between clips. This is the most important rule for a reference-based ad.
+- REFERENCE CONSISTENCY: embed the LOCK SHEET description of the key subject (${offerWord} and/or person) into EVERY clip, word-for-word the same, so the subject does not change appearance between clips. This is the most important rule for a reference-based ad.
+- ${negativeConstraints}
 - Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
 ${personBits ? `- WHENEVER a human appears on camera in a clip, that person must be a ${personBits} individual (matching the voiceover talent), described consistently across clips. Skip this for clips that show only product, scenery, or B-roll with no person.` : ''}
 
@@ -175,13 +206,23 @@ RULES FOR THE "script" ARRAY:
 
 Make this generation genuinely unique — imagine you've never written about this business before.`;
 
-  // Build the message content. If an image was uploaded, include it for analysis.
-  const userContent = hasImage
-    ? [
-        { type: 'image', source: { type: 'base64', media_type: image.media_type, data: image.data } },
-        { type: 'text', text: user }
-      ]
-    : user;
+  // Build the message content. Include whichever reference image(s) were uploaded.
+  let userContent;
+  if (hasAnyImg) {
+    const parts = [];
+    if (hasProductImg) {
+      parts.push({ type: 'text', text: `Reference Image 1 — the ${offerWord.toUpperCase()}:` });
+      parts.push({ type: 'image', source: { type: 'base64', media_type: productImage.media_type, data: productImage.data } });
+    }
+    if (hasSettingImg) {
+      parts.push({ type: 'text', text: `Reference Image 2 — the SETTING / MODEL:` });
+      parts.push({ type: 'image', source: { type: 'base64', media_type: settingImage.media_type, data: settingImage.data } });
+    }
+    parts.push({ type: 'text', text: user });
+    userContent = parts;
+  } else {
+    userContent = user;
+  }
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -193,7 +234,7 @@ Make this generation genuinely unique — imagine you've never written about thi
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2000,
+        max_tokens: 3000,
         temperature: 1, // high temperature = more variety between generations
         system,
         messages: [{ role: 'user', content: userContent }]
@@ -239,6 +280,7 @@ Make this generation genuinely unique — imagine you've never written about thi
       delete parsed.visualPrompt;
       parsed.speaker = parsed.speaker || '';
       parsed.lockSheet = parsed.lockSheet || '';
+      parsed.framePrompt = parsed.framePrompt || '';
 
       // ---- Build the consolidated FINAL PROMPTS ----
       // Voice/speaker line shown in the bundle.
@@ -248,8 +290,9 @@ Make this generation genuinely unique — imagine you've never written about thi
         (v.language && v.language.toLowerCase() !== 'english') ? `language: ${v.language}` : ''
       ].filter(Boolean).join(' · ');
 
-      const refLine = hasImage
-        ? 'REFERENCE IMAGE: attach your uploaded reference image in Google Flow before generating — the scene should match it.'
+      const imgCount = (hasProductImg?1:0) + (hasSettingImg?1:0);
+      const refLine = imgCount > 0
+        ? `REFERENCE IMAGE${imgCount>1?'S':''}: attach your uploaded reference image${imgCount>1?'s (the '+offerWord+' and the setting/model)':''} in Google Flow before generating — the result should match ${imgCount>1?'them':'it'}.`
         : '';
 
       const styName = (style || 'cinematic');
@@ -272,7 +315,8 @@ Make this generation genuinely unique — imagine you've never written about thi
     parsed.style = style || 'cinematic';
     parsed.ratio = ratio || 'vertical';
     parsed.voice = v;
-    parsed.usedImage = hasImage;
+    parsed.usedImage = hasProductImg || hasSettingImg;
+    parsed.offerType = isService ? 'service' : 'product';
 
     return res.status(200).json(parsed);
   } catch (e) {
