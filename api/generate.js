@@ -27,11 +27,12 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ error: 'Invalid request body' }); }
 
-  const { business, detail, angle, format, duration, item, style, ratio, voice, image } = body || {};
+  const { business, detail, angle, duration, item, style, ratio, voice, image } = body || {};
   if (!business || !angle) return res.status(400).json({ error: 'Missing business or angle' });
 
-  const isVideo = format === 'video';
-  const genPlatform = isVideo ? 'Google Flow (Veo)' : 'ChatGPT (GPT Image)';
+  // AdSpark is video-only. Everything generates Google Flow (Veo) video prompts.
+  const isVideo = true;
+  const genPlatform = 'Google Flow (Veo)';
 
   // Voiceover direction (video only). All optional.
   const v = voice || {};
@@ -227,9 +228,59 @@ Make this generation genuinely unique — imagine you've never written about thi
 
       delete parsed.visualPrompt;
       parsed.speaker = parsed.speaker || '';
+
+      // ---- Build the consolidated FINAL PROMPTS ----
+      // Voice/speaker line shown in the bundle.
+      const voiceLine = [
+        parsed.speaker ? parsed.speaker : '',
+        v.tone ? `tone: ${v.tone}` : '',
+        (v.language && v.language.toLowerCase() !== 'english') ? `language: ${v.language}` : ''
+      ].filter(Boolean).join(' · ');
+
+      const refLine = hasImage
+        ? 'REFERENCE IMAGE: attach your uploaded reference image in Google Flow before generating — the scene should match it.'
+        : '';
+
+      const styName = (style || 'cinematic');
+      // Per-clip final prompt: everything needed to make and narrate that one clip.
+      parsed.finalClips = clips.map((clip, i) => {
+        const vo = script[i] || '';
+        return [
+          `=== CLIP ${i+1} of ${clips.length} — ${aspect} ===`,
+          ``,
+          `VIDEO PROMPT (paste into Google Flow):`,
+          clip,
+          ``,
+          vo ? `VOICEOVER${voiceLine ? ` (${voiceLine})` : ''}:` : '',
+          vo ? `"${vo}"` : '',
+          refLine ? `` : '',
+          refLine
+        ].filter(l => l !== '').join('\n');
+      });
+
+      // Master final prompt: the whole ad in one block.
+      const masterParts = [];
+      masterParts.push(`AD PACKAGE — ${business}`);
+      masterParts.push(`Angle: ${angle}`);
+      masterParts.push(`Style: ${st.name} · Aspect: ${aspect} · ${clips.length} clip${clips.length>1?'s':''} (8s each, chain with Extend)`);
+      if (voiceLine) masterParts.push(`Voiceover talent: ${voiceLine}`);
+      if (refLine) masterParts.push(refLine);
+      masterParts.push('');
+      clips.forEach((clip, i) => {
+        masterParts.push(`--- CLIP ${i+1} ---`);
+        masterParts.push(`VIDEO PROMPT: ${clip}`);
+        if (script[i]) masterParts.push(`VOICEOVER: "${script[i]}"`);
+        masterParts.push('');
+      });
+      masterParts.push(`AD COPY`);
+      masterParts.push(`Headline: ${parsed.headline || ''}`);
+      if (parsed.headlineAlt) masterParts.push(`Alt headline: ${parsed.headlineAlt}`);
+      if (parsed.primaryText) masterParts.push(`Primary text: ${parsed.primaryText}`);
+      masterParts.push(`CTA: ${parsed.cta || ''}`);
+      parsed.finalMaster = masterParts.join('\n');
     }
     parsed.style = style || 'cinematic';
-    parsed.ratio = ratio || (isVideo ? 'vertical' : 'square');
+    parsed.ratio = ratio || 'vertical';
     parsed.voice = v;
     parsed.usedImage = hasImage;
 
