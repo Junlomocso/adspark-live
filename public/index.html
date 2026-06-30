@@ -347,6 +347,12 @@
 
       <div id="finalzone" style="display:none;">
         <h2 class="step" style="margin-top:38px;"><span class="n">★</span> Final prompt <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— everything bundled, ready to use</span></h2>
+        <div id="lockzone" style="display:none;">
+          <div class="cp-card" style="margin-bottom:14px;">
+            <div class="cp-head"><span class="cp-lbl"><span class="ci">🔒</span> Locked subject <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— repeated in every clip to stay consistent</span></span><button class="mini-copy" id="copylock">⧉ Copy</button></div>
+            <div class="cp-body" id="lockbody"></div>
+          </div>
+        </div>
         <div class="cp-card" style="border-color:var(--border-accent,var(--line-2));">
           <div class="cp-head"><span class="cp-lbl"><span class="ci">★</span> Master prompt (whole ad)</span><button class="copy-btn" id="copymaster">⧉ Copy master</button></div>
           <div class="clip-body" id="finalmaster"></div>
@@ -523,6 +529,14 @@ function fillOutput(c){
   const fz=document.getElementById('finalzone');
   const master = c.finalMaster || '';
   const fclips = Array.isArray(c.finalClips) ? c.finalClips : [];
+  // Lock sheet
+  const lockzone=document.getElementById('lockzone');
+  if(c.lockSheet){
+    document.getElementById('lockbody').textContent=c.lockSheet;
+    lockzone.style.display='block';
+  } else {
+    lockzone.style.display='none';
+  }
   if(master || fclips.length){
     document.getElementById('finalmaster').textContent = master;
     const fc=document.getElementById('finalclips'); fc.innerHTML='';
@@ -605,6 +619,11 @@ document.getElementById('copymaster').onclick=function(){
   const m=(lastResult&&lastResult.finalMaster)?lastResult.finalMaster:'';
   if(!m) return;
   navigator.clipboard.writeText(m).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy master';this.classList.remove('done');},1500); });
+};
+document.getElementById('copylock').onclick=function(){
+  const l=(lastResult&&lastResult.lockSheet)?lastResult.lockSheet:'';
+  if(!l) return;
+  navigator.clipboard.writeText(l).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy';this.classList.remove('done');},1500); });
 };
 
 const KEY='adspark_live_history_v1';
