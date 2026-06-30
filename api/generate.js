@@ -89,11 +89,19 @@ export default async function handler(req, res) {
     : `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces or bodies awkwardly; leave headroom and margins; well-composed. Avoid distorted hands, extra limbs, or warped faces.`;
 
   const hasImage = !!(image && image.data && image.media_type);
+  const lockInstruction = `
+REFERENCE LOCKING (critical for consistency):
+Build a precise "LOCK SHEET" — an exact, reusable physical description of the key subject(s) so they stay consistent across every clip and drift as little as possible.
+- If a PERSON is the subject: lock exact age range, gender, ethnicity/skin tone, hair (color, length, style), facial hair, distinctive features, build/height, and exact clothing (items, colors, fit). 
+- If a PRODUCT/ITEM is the subject: lock exact type, color(s), material, finish, shape, proportions, branding/markings, and any distinguishing details.
+- If both appear, lock both.
+This LOCK SHEET text must be embedded verbatim (or near-verbatim) into EVERY clip prompt, so the same person/product is described identically each time. Consistency comes from repeating the same precise description, never paraphrasing it differently between clips.`;
+
   const itemLine = hasImage
-    ? `The user has UPLOADED a reference image (provided in this message). Study it carefully and write the visual prompt so the generated creative closely matches what you see — the real product, setting, colors, and style in that image. Describe the actual subject from the image; do not invent a different one. The user will attach this same image in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}`
+    ? `The user has UPLOADED a reference image (provided in this message). Study it extremely carefully. The generated creative must match what you see — the real person/product, setting, colors, and style. Describe the ACTUAL subject from the image in precise detail; never invent a different one. The user will attach this same image in ${genPlatform} themselves.${item ? ` They also note: "${item}".` : ''}${lockInstruction}`
     : item
-      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". The visual prompt must treat it as the real hero subject and not invent a different product.`
-      : `No reference will be attached; the visual prompt should describe a photoreal, on-brand scene to generate from scratch.`;
+      ? `The user describes a reference they will attach in ${genPlatform}: "${item}". Treat it as the real hero subject; do not invent a different product.${lockInstruction}`
+      : `No reference will be attached; invent a photoreal, on-brand subject. Still create a LOCK SHEET describing your chosen subject precisely, and repeat it in every clip so it stays consistent across clips.${lockInstruction}`;
 
   // Google Flow / Veo caps each generation at 8 seconds. Longer ads are built by
   // chaining multiple 8s clips with the Extend feature. So we break the ad into beats.
@@ -140,7 +148,8 @@ Return JSON with exactly these keys:
   "cta": "a 2-4 word call-to-action button label",
   ${isVideo
     ? `"speaker": "a one-line description of the voiceover talent based on the VOICEOVER DIRECTION (e.g. 'American man, warm and confident'). If no direction given, choose a fitting default.",
-  "clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount}"`).join(', ')} ],
+  "lockSheet": "the precise LOCK SHEET — an exact physical description of the key subject(s) (person and/or product) that is embedded identically into every clip for consistency. 2-5 sentences.",
+  "clips": [ ${Array.from({length: segCount}, (_,i)=>`"the full prompt for clip ${i+1} of ${segCount} (must contain the lock sheet description)"`).join(', ')} ],
   "script": [ ${Array.from({length: segCount}, (_,i)=>`"the voiceover line spoken during clip ${i+1}"`).join(', ')} ]`
     : `"visualPrompt": "a detailed, copy-paste-ready prompt for ${genPlatform} in ${st.name} style. Include shot type, composition, lighting, mood, the aspect ratio (${aspect}), the rendering-quality and framing direction above, and reserve space for a headline overlay. End by instructing the model NOT to bake text into the image."`}
 }
@@ -153,6 +162,7 @@ ${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
 - Embody the ${st.name} visual style in every clip.
 - State the ${aspect} aspect ratio in each clip.
 - Keep subject, wardrobe, palette, lighting, and style consistent across all clips so they stitch seamlessly (describe the same people the same way each time).
+- REFERENCE CONSISTENCY: embed the LOCK SHEET description of the key subject (person and/or product) into EVERY clip, word-for-word the same, so the subject does not change appearance between clips. This is the most important rule for a reference-based ad.
 - Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
 ${personBits ? `- WHENEVER a human appears on camera in a clip, that person must be a ${personBits} individual (matching the voiceover talent), described consistently across clips. Skip this for clips that show only product, scenery, or B-roll with no person.` : ''}
 
@@ -228,6 +238,7 @@ Make this generation genuinely unique — imagine you've never written about thi
 
       delete parsed.visualPrompt;
       parsed.speaker = parsed.speaker || '';
+      parsed.lockSheet = parsed.lockSheet || '';
 
       // ---- Build the consolidated FINAL PROMPTS ----
       // Voice/speaker line shown in the bundle.
@@ -264,6 +275,7 @@ Make this generation genuinely unique — imagine you've never written about thi
       masterParts.push(`Angle: ${angle}`);
       masterParts.push(`Style: ${st.name} · Aspect: ${aspect} · ${clips.length} clip${clips.length>1?'s':''} (8s each, chain with Extend)`);
       if (voiceLine) masterParts.push(`Voiceover talent: ${voiceLine}`);
+      if (parsed.lockSheet) masterParts.push(`Locked subject (keep identical every clip): ${parsed.lockSheet}`);
       if (refLine) masterParts.push(refLine);
       masterParts.push('');
       clips.forEach((clip, i) => {
