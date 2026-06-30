@@ -260,7 +260,7 @@
   <main class="main">
     <div class="mobile-brand"><span class="dot">✦</span> AdSpark</div>
     <h1 style="font-size:26px; font-weight:700; letter-spacing:-0.02em;">Real-time ad generator <span class="live-badge"><span class="live-dot"></span>LIVE AI</span></h1>
-    <p class="lead">Every click writes a brand-new idea from scratch — fresh headline, post text, CTA, and a copy-ready visual prompt for Google Flow or ChatGPT. Nothing is templated.</p>
+    <p class="lead">Every click writes a brand-new video ad from scratch — Google Flow clip prompts, a voiceover script, ad copy, and one final ready-to-use prompt that bundles it all. Nothing is templated.</p>
 
     <h2 class="step"><span class="n">1</span> Your business</h2>
     <div class="field"><input id="biz" type="text" placeholder="e.g. Roofing business" /></div>
@@ -278,21 +278,15 @@
     <div class="angles" id="angles"></div>
     <button class="ghost-btn" id="suggest">↻ Suggest angles tuned to my business (live)</button>
 
-    <h2 class="step"><span class="n">4</span> Format</h2>
-    <div class="seg" id="fmt">
-      <button data-f="image" class="on"><div class="sf-t">🖼 Image <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· ChatGPT</span></div><div class="sf-d">Single hero still</div></button>
-      <button data-f="video"><div class="sf-t">🎬 Video <span style="font-size:11px;color:var(--txt-mute);font-weight:400;">· Google Flow</span></div><div class="sf-d">Short motion ad with a hook</div></button>
-    </div>
-
-    <h2 class="step"><span class="n">5</span> Aspect ratio</h2>
+    <h2 class="step"><span class="n">4</span> Aspect ratio</h2>
     <div class="durs" id="ratios">
       <button class="dur on" data-r="vertical">9:16 Vertical <span class="clip-step">Reels / TikTok / Stories</span></button>
       <button class="dur" data-r="portrait">4:5 Portrait <span class="clip-step">Feed</span></button>
       <button class="dur" data-r="square">1:1 Square <span class="clip-step">Feed</span></button>
     </div>
 
-    <div id="durwrap" style="display:none;">
-      <h2 class="step"><span class="n">6</span> Video length</h2>
+    <div id="durwrap">
+      <h2 class="step"><span class="n">5</span> Video length</h2>
       <div class="durs" id="durs">
         <button class="dur" data-d="8"><span class="badge">1 clip</span>8s</button>
         <button class="dur on" data-d="15"><span class="badge">recommended</span>15s</button>
@@ -301,7 +295,7 @@
       </div>
       <p class="dur-note" id="durnote"></p>
 
-      <h2 class="step"><span class="n">7</span> Voiceover <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— for the script</span></h2>
+      <h2 class="step"><span class="n">6</span> Voiceover <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— for the script</span></h2>
       <div class="vfield">
         <label class="vlbl">Voice</label>
         <div class="durs" id="vgender">
@@ -317,7 +311,7 @@
       <div class="field"><input id="vtone" type="text" placeholder="Tone — e.g. warm, energetic, calm, authoritative" /></div>
     </div>
 
-    <h2 class="step"><span class="n" id="itemnum">6</span> Reference <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
+    <h2 class="step"><span class="n" id="itemnum">7</span> Reference <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— optional</span></h2>
     <div class="field"><input id="item" type="text" placeholder="Describe what you'll attach (e.g. photo of a finished metal roof). Leave blank to invent a scene." /></div>
     <label class="uploader" id="uploader">
       <input type="file" id="imgfile" accept="image/png,image/jpeg,image/webp" hidden />
@@ -350,6 +344,16 @@
         <div class="cp-card"><div class="cp-head"><span class="cp-lbl"><span class="ci">◆</span> Call to action</span><button class="mini-copy" data-c="cta">⧉ Copy</button></div><span class="cp-cta" id="cp-cta"></span></div>
       </div>
       <button class="regen" id="regen">↻ Generate a different version (live)</button>
+
+      <div id="finalzone" style="display:none;">
+        <h2 class="step" style="margin-top:38px;"><span class="n">★</span> Final prompt <span style="text-transform:none;letter-spacing:0;color:var(--txt-mute);font-weight:400;">— everything bundled, ready to use</span></h2>
+        <div class="cp-card" style="border-color:var(--border-accent,var(--line-2));">
+          <div class="cp-head"><span class="cp-lbl"><span class="ci">★</span> Master prompt (whole ad)</span><button class="copy-btn" id="copymaster">⧉ Copy master</button></div>
+          <div class="clip-body" id="finalmaster"></div>
+        </div>
+        <p class="footer-note" style="margin-bottom:10px;">Or grab each clip individually — video prompt + voiceover + voice direction together:</p>
+        <div id="finalclips"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -366,7 +370,7 @@ const DUR_NOTE = {
   '20':'20s = 3 chained clips. Flow generates 8s at a time; you\u2019ll render 3 segments and chain them. Room for problem \u2192 solution \u2192 CTA.',
   '30':'30s = 4 chained clips. A full mini-story across 4 segments. Uses more daily credits \u2014 plan around your free 50/day.'
 };
-let state = { fmt:'image', dur:'15', angleIdx:null, angleText:'', style:'cinematic', ratio:'vertical', vgender:'any' };
+let state = { fmt:'video', dur:'15', angleIdx:null, angleText:'', style:'cinematic', ratio:'vertical', vgender:'any' };
 let uploadedImage = null; // { data, media_type }
 const STYLE_LABEL = { ugc:'UGC', cinematic:'Cinematic', product:'Product showcase', testimonial:'Testimonial' };
 const RATIO_LABEL = { vertical:'9:16 Vertical', portrait:'4:5 Portrait', square:'1:1 Square' };
@@ -402,15 +406,6 @@ document.querySelectorAll('#vgender button').forEach(b=>{
   };
 });
 
-document.querySelectorAll('#fmt button').forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll('#fmt button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on'); state.fmt=b.dataset.f;
-    const vid=state.fmt==='video';
-    document.getElementById('durwrap').style.display=vid?'block':'none';
-    document.getElementById('itemnum').textContent=vid?'8':'6';
-  };
-});
 function setDurNote(){ document.getElementById('durnote').textContent=DUR_NOTE[state.dur]; }
 document.querySelectorAll('#durs .dur').forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll('#durs .dur').forEach(x=>x.classList.remove('on')); b.classList.add('on'); state.dur=b.dataset.d; setDurNote(); };
@@ -454,7 +449,7 @@ async function callAPI(){
     language: document.getElementById('vlang').value.trim(),
     tone: document.getElementById('vtone').value.trim()
   };
-  const payload={ business, detail, angle, format:state.fmt, duration:state.dur, item, style:state.style, ratio:state.ratio, voice, image: uploadedImage };
+  const payload={ business, detail, angle, duration:state.dur, item, style:state.style, ratio:state.ratio, voice, image: uploadedImage };
   const r=await fetch('/api/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
   if(!r.ok){
     let msg='Generation failed.';
@@ -485,57 +480,65 @@ function fillOutput(c){
   zone.innerHTML='';
   const scriptzone=document.getElementById('scriptzone');
 
-  if(state.fmt==='image'){
-    document.getElementById('outtitle').textContent='Image prompt \u2014 ChatGPT \u00b7 '+tag;
+  const clips = Array.isArray(c.clips) ? c.clips : (c.visualPrompt? [c.visualPrompt] : []);
+  document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+tag+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
+  clips.forEach((clip,i)=>{
     const card=document.createElement('div'); card.className='clip-card';
     const head=document.createElement('div'); head.className='clip-head';
-    head.innerHTML='<span class="clip-tag"><span class="clip-num">\u25a3</span> Image prompt</span>';
-    const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy';
+    const stepLabel = i===0 ? 'Generate first' : 'Then tap Extend, paste this';
+    head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Clip '+(i+1)+' <span class="clip-step">'+stepLabel+'</span></span>';
+    const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy clip '+(i+1);
     head.appendChild(cbtn); card.appendChild(head);
-    const body=document.createElement('div'); body.className='clip-body'; body.textContent=c.visualPrompt||'';
+    const body=document.createElement('div'); body.className='clip-body'; body.textContent=clip;
     card.appendChild(body); zone.appendChild(card);
-    attachCopy(cbtn, ()=>c.visualPrompt||'');
-    document.getElementById('footernote').innerHTML='<b>Next step:</b> paste this into ChatGPT, attach your reference if you have one, and generate. '+styName+' style, '+ratName+'.';
-    scriptzone.style.display='none';
+    attachCopy(cbtn, ()=>clip);
+    if(i<clips.length-1){
+      const ext=document.createElement('div'); ext.className='clip-extend'; ext.textContent='\u2193 use Flow\u2019s Extend, then paste the next clip \u2193';
+      zone.appendChild(ext);
+    }
+  });
+  const fn=document.getElementById('footernote');
+  fn.innerHTML = clips.length>1
+    ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. '+styName+' style, '+ratName+'.'
+    : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. '+styName+' style, '+ratName+'.';
+
+  // Voiceover script
+  const script = Array.isArray(c.script) ? c.script : [];
+  const list=document.getElementById('scriptlist');
+  const stag=document.getElementById('speakertag');
+  list.innerHTML='';
+  if(script.length){
+    stag.innerHTML = c.speaker ? '<span class="speaker-tag">🎙 '+c.speaker.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>' : '';
+    script.forEach((line,i)=>{
+      const row=document.createElement('div'); row.className='scr-line';
+      row.innerHTML='<span class="scr-num">'+(i+1)+'</span><span class="scr-txt">'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
+      list.appendChild(row);
+    });
+    scriptzone.style.display='block';
   } else {
-    const clips = Array.isArray(c.clips) ? c.clips : (c.visualPrompt? [c.visualPrompt] : []);
-    document.getElementById('outtitle').textContent='Video prompts \u2014 Google Flow \u00b7 '+tag+' \u00b7 '+clips.length+' clip'+(clips.length>1?'s':'');
-    clips.forEach((clip,i)=>{
+    scriptzone.style.display='none';
+  }
+
+  // Final prompts (master + per-clip)
+  const fz=document.getElementById('finalzone');
+  const master = c.finalMaster || '';
+  const fclips = Array.isArray(c.finalClips) ? c.finalClips : [];
+  if(master || fclips.length){
+    document.getElementById('finalmaster').textContent = master;
+    const fc=document.getElementById('finalclips'); fc.innerHTML='';
+    fclips.forEach((fcText,i)=>{
       const card=document.createElement('div'); card.className='clip-card';
       const head=document.createElement('div'); head.className='clip-head';
-      const stepLabel = i===0 ? 'Generate first' : 'Then tap Extend, paste this';
-      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Clip '+(i+1)+' <span class="clip-step">'+stepLabel+'</span></span>';
-      const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy clip '+(i+1);
+      head.innerHTML='<span class="clip-tag"><span class="clip-num">'+(i+1)+'</span> Final \u2014 Clip '+(i+1)+'</span>';
+      const cbtn=document.createElement('button'); cbtn.className='copy-btn'; cbtn.innerHTML='\u29c9 Copy';
       head.appendChild(cbtn); card.appendChild(head);
-      const body=document.createElement('div'); body.className='clip-body'; body.textContent=clip;
-      card.appendChild(body); zone.appendChild(card);
-      attachCopy(cbtn, ()=>clip);
-      if(i<clips.length-1){
-        const ext=document.createElement('div'); ext.className='clip-extend'; ext.textContent='\u2193 use Flow\u2019s Extend, then paste the next clip \u2193';
-        zone.appendChild(ext);
-      }
+      const body=document.createElement('div'); body.className='clip-body'; body.textContent=fcText;
+      card.appendChild(body); fc.appendChild(card);
+      attachCopy(cbtn, ()=>fcText);
     });
-    const fn=document.getElementById('footernote');
-    fn.innerHTML = clips.length>1
-      ? '<b>How to use:</b> in Google Flow, paste <b>Clip 1</b> and generate. Happy with it? Tap <b>Extend</b>, paste <b>Clip 2</b>, generate \u2014 repeat to the end. '+clips.length+' clips = '+clips.length+' of your daily Flow credits. '+styName+' style, '+ratName+'.'
-      : '<b>How to use:</b> paste this into Google Flow and generate. One 8s clip, one credit \u2014 no chaining needed. '+styName+' style, '+ratName+'.';
-
-    // Voiceover script
-    const script = Array.isArray(c.script) ? c.script : [];
-    const list=document.getElementById('scriptlist');
-    const stag=document.getElementById('speakertag');
-    list.innerHTML='';
-    if(script.length){
-      stag.innerHTML = c.speaker ? '<span class="speaker-tag">🎙 '+c.speaker.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>' : '';
-      script.forEach((line,i)=>{
-        const row=document.createElement('div'); row.className='scr-line';
-        row.innerHTML='<span class="scr-num">'+(i+1)+'</span><span class="scr-txt">'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
-        list.appendChild(row);
-      });
-      scriptzone.style.display='block';
-    } else {
-      scriptzone.style.display='none';
-    }
+    fz.style.display='block';
+  } else {
+    fz.style.display='none';
   }
 
   document.getElementById('cp-headline').textContent=c.headline||'';
@@ -597,6 +600,11 @@ document.getElementById('copyscript').onclick=function(){
   const head=(lastResult&&lastResult.speaker)?(lastResult.speaker+':\n'):'';
   const txt=head+s.map((l,i)=>'Clip '+(i+1)+': '+l).join('\n');
   navigator.clipboard.writeText(txt).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy all';this.classList.remove('done');},1500); });
+};
+document.getElementById('copymaster').onclick=function(){
+  const m=(lastResult&&lastResult.finalMaster)?lastResult.finalMaster:'';
+  if(!m) return;
+  navigator.clipboard.writeText(m).then(()=>{ this.textContent='\u2713 Copied'; this.classList.add('done'); setTimeout(()=>{this.textContent='\u29c9 Copy master';this.classList.remove('done');},1500); });
 };
 
 const KEY='adspark_live_history_v1';
