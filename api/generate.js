@@ -86,10 +86,8 @@ export default async function handler(req, res) {
   const RATIOS = { vertical: '9:16 vertical', portrait: '4:5 portrait', square: '1:1 square' };
   const aspect = RATIOS[ratio] || (isVideo ? '9:16 vertical' : '1:1 square');
 
-  // Quality directives applied to every visual prompt to avoid the chopped / low-quality look.
-  const QUALITY = isVideo
-    ? `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures, professional camera work. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; subjects well-composed and centered or rule-of-thirds. Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`
-    : `RENDERING QUALITY (critical): photorealistic, high detail, sharp focus, natural realistic lighting, lifelike skin tones and textures. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces or bodies awkwardly; leave headroom and margins; well-composed. Avoid distorted hands, extra limbs, or warped faces.`;
+  // Quality directives applied to every clip, incorporating the user's proven Flow directive.
+  const QUALITY = `RENDERING QUALITY (critical): ultra-realistic and convincing, photorealistic high detail, sharp focus, cinematic lighting, lifelike realistic skin texture and natural skin tones, professional camera work. PERFORMANCE: if a person is on camera, natural and energetic hand gestures and body language, believable expressions, a selling and persuasive energy without looking staged. IDENTITY: if a reference face is used, do NOT alter the face — keep it the same person. FRAMING (critical): keep all people and key subjects FULLY in frame — never crop faces, heads, or bodies awkwardly; leave appropriate headroom and margins; well-composed (centered or rule-of-thirds). Avoid distorted hands, extra limbs, warped faces, or unnatural proportions. Smooth, stable, intentional camera motion — no jitter.`;
 
   const hasProductImg = !!(productImage && productImage.data && productImage.media_type);
   const hasSettingImg = !!(settingImage && settingImage.data && settingImage.media_type);
@@ -197,12 +195,14 @@ ${isVideo ? `RULES FOR THE "clips" ARRAY (very important):
 - Clip 1 opens with the hook. The final clip ends leaving empty space (lower third) for a CTA overlay — but do NOT render any text in the video.
 ${personBits ? `- WHENEVER a human appears on camera in a clip, that person must be a ${personBits} individual (matching the voiceover talent), described consistently across clips. Skip this for clips that show only product, scenery, or B-roll with no person.` : ''}
 
-RULES FOR THE "script" ARRAY:
+RULES FOR THE "script" ARRAY (write these so they sound like a REAL PERSON SPEAKING, not written ad copy):
 - Exactly ${segCount} entr${segCount>1?'ies':'y'}, one per clip, in order.
-- Each is ONLY the spoken VOICEOVER words for that ~8-second clip — natural, concise (roughly 12-22 words to fit 8 seconds).
-- ${voiceBrief ? `The words must suit the specified voiceover direction (${voiceBrief}). If a non-English language is specified, WRITE THE LINES IN THAT LANGUAGE.` : 'Default to natural English.'}
-- Together they form one coherent script: hook → build → call to action in the final line.
-- Just the spoken words — no speaker labels, no stage directions inside the line (the "speaker" field already captures who's talking).` : ''}
+- Each is ONLY the spoken VOICEOVER words for that ~8-second clip — short enough to say naturally in 8 seconds (roughly 12-20 words).
+- CRITICAL — NATURAL SPEECH: Write how a real person actually TALKS out loud, casual and conversational. NOT slogans, NOT a list of adjectives, NOT marketing taglines. Avoid slogan-style phrasing like "walang ito, walang iyon" or "no this, no that". Use everyday spoken rhythm, contractions, and the way real people phrase things in casual conversation.
+- ${voiceBrief ? `Suit the voiceover direction (${voiceBrief}).` : 'Use a natural, friendly speaker.'}
+- LANGUAGE: ${(v.language && v.language.toLowerCase() !== 'english') ? `Write the lines in ${v.language}, using NATURAL, NATIVE, EVERYDAY SPOKEN ${v.language} — the way a real native speaker casually talks, including natural code-switching or common everyday words if that's how people genuinely speak. Do NOT write stiff, formal, or textbook ${v.language}, and do NOT write translated-sounding ad copy. It must sound like a real ${v.language} speaker talking to a friend.` : 'Write in natural, casual, everyday spoken English — the way a real person talks, not formal or salesy.'}
+- Together they flow as ONE natural spoken message: a hook that grabs attention, then the point, then a casual nudge to act at the end. Make it feel like one person talking through the whole ad, not separate slogans.
+- Just the spoken words — no speaker labels, no stage directions inside the line.` : ''}
 
 Make this generation genuinely unique — imagine you've never written about this business before.`;
 
